@@ -1,0 +1,114 @@
+{
+  "Abstract Factory": [
+    "You only need to create one product type",
+    "The \"families\" only have one member each",
+    "Variants will never be added"
+  ],
+  "Adapter": [
+    "You control both interfaces — just align them directly",
+    "The \"adaptation\" is a one-line wrapper",
+    "The codebase already has an adapter for this backend"
+  ],
+  "Bridge": [
+    "You only have one dimension of variation",
+    "The class isn't actually big",
+    "Adapter already solves your interop problem"
+  ],
+  "Builder": [
+    "Constructor takes ≤4 args and they are all required",
+    "Object has no optional or step-wise configuration",
+    "A simple object literal { a, b, c } would do the job"
+  ],
+  "Chain of Responsibility": [
+    "Only one handler exists",
+    "All handlers always run regardless of result",
+    "The chain is fixed at compile time and never reordered"
+  ],
+  "Command": [
+    "You're calling a single method directly with no need for queueing/undo/logging",
+    "The action has no state and never needs to be reified",
+    "You'd be wrapping every UI event in a command class"
+  ],
+  "Composite": [
+    "The hierarchy is one or two levels deep",
+    "Leaves and composites have nothing meaningful in common",
+    "A simple recursive function over a plain object tree would suffice"
+  ],
+  "Decorator": [
+    "Behavior is fixed and known at compile time",
+    "Higher-order functions or middleware patterns already solve it (e.g. Redux/Zustand middleware)",
+    "Only one wrapper layer is needed"
+  ],
+  "Facade": [
+    "The subsystem already has a simple public API",
+    "The facade would just re-export everything",
+    "You'd be creating a facade with one method that calls one underlying method"
+  ],
+  "Factory Method": [
+    "You only have one concrete product type and no realistic plan for a second",
+    "The \"factory\" would be a one-liner that returns new Foo() with no logic",
+    "The codebase already has a factory for this domain"
+  ],
+  "Flyweight": [
+    "Memory isn't actually a bottleneck",
+    "Objects are few (<10000)",
+    "The \"shared\" state changes frequently"
+  ],
+  "Iterator": [
+    "A native for...of over an array or Map already works",
+    "The collection is a simple array",
+    "You'd need an entire iterator class for one consumer"
+  ],
+  "Mediator": [
+    "Two components only talk to each other",
+    "You'd be introducing a mediator with one method that calls one component",
+    "Observer or event bus already does what you need"
+  ],
+  "Memento": [
+    "You can serialize state to JSON and back",
+    "The state is immutable already",
+    "You only need one undo step"
+  ],
+  "Observer": [
+    "A single store subscription would do",
+    "Only one consumer needs the event",
+    "Static, compile-time known dependencies"
+  ],
+  "Prototype": [
+    "A plain structuredClone() or spread operator does the job",
+    "The object has a constructor you can call",
+    "Objects are immutable"
+  ],
+  "Proxy": [
+    "You can use JavaScript's built-in Proxy global",
+    "A simple lazy getter (get foo() { return this.foo ??= compute() }) suffices",
+    "The \"proxy\" doesn't add behavior beyond delegation"
+  ],
+  "Singleton": [
+    "A store slice or DI container would do",
+    "The \"singleton\" is just stateless utility functions",
+    "You only need it for convenient access from anywhere",
+    "Tests need to swap implementations"
+  ],
+  "State": [
+    "Only 2-3 states with minor differences",
+    "States never share a common interface meaningfully",
+    "A useState hook or store flag does the job"
+  ],
+  "Strategy": [
+    "You only have one algorithm and no plan for a second",
+    "The \"strategies\" are 1-line functions",
+    "A simple switch over 2-3 cases is clearer than 3 strategy classes"
+  ],
+  "Template Method": [
+    "Steps are completely independent",
+    "You only have one concrete subclass",
+    "The \"algorithm skeleton\" is 3 lines"
+  ],
+  "Visitor": [
+    "The hierarchy has only 2-3 element classes",
+    "You'd be adding a Visitor for a single operation",
+    "Element classes change frequently",
+    "A discriminated union with switch over kind field is clearer"
+  ]
+}

@@ -1,0 +1,33 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run hook test matrix
+        run: npm test
+
+      - name: Verify dist/skill-bundle.md is up to date
+        run: |
+          npm run bundle
+          if ! git diff --exit-code dist/; then
+            echo "::error::dist/skill-bundle.md is stale — run 'npm run bundle' and commit." >&2
+            exit 1
+          fi
+
+      - name: shellcheck install scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          npm run lint

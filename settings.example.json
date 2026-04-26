@@ -1,0 +1,38 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/session-start-reminder.js\"" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/user-prompt-reminder.js\"" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/pattern-context-prep.js\"" },
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/check-pattern-preamble.js\"" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/pattern-smell-detector.js\"" },
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/log-pattern-decision.js\"" }
+        ]
+      }
+    ]
+  }
+}

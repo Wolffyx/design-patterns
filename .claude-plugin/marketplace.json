@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "design-patterns",
+  "description": "Gang of Four design-pattern catalog plus Pattern Check (Rule 0) enforcement for Claude Code.",
+  "owner": {
+    "name": "wolffyx",
+    "url": "https://github.com/wolffyx"
+  },
+  "plugins": [
+    {
+      "name": "design-patterns",
+      "description": "22 GoF patterns, Tier-1 priority list, hook-enforced preamble on every TS/TSX edit, smell detection (Singleton/Observer/Command/Template Method + 6 more), cross-file duplicate finder, decision-log analyzer, /pattern-review command.",
+      "source": "./",
+      "category": "code-quality"
+    }
+  ]
+}

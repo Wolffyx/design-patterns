@@ -1,0 +1,45 @@
+{
+  "name": "claude-design-patterns",
+  "version": "1.0.0",
+  "description": "Gang of Four design-pattern catalog plus Pattern Check (Rule 0) hook enforcement for Claude Code.",
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "node hooks/__tests__/smoke.js && node hooks/__tests__/run-matrix.js",
+    "test:smoke": "node hooks/__tests__/smoke.js",
+    "test:matrix": "node hooks/__tests__/run-matrix.js",
+    "analyze": "node hooks/analyze-log.js",
+    "bundle": "node scripts/bundle.js",
+    "lint": "shellcheck install.sh uninstall.sh"
+  },
+  "files": [
+    ".claude-plugin",
+    "skills",
+    "commands",
+    "hooks",
+    "docs",
+    "scripts",
+    "dist",
+    "install.sh",
+    "uninstall.sh",
+    "settings.example.json",
+    "pattern-check.config.example.json",
+    "pattern-check.schema.json",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wolffyx/claude-design-patterns.git"
+  },
+  "keywords": [
+    "claude-code",
+    "claude-code-plugin",
+    "design-patterns",
+    "gang-of-four",
+    "gof",
+    "code-quality",
+    "hooks",
+    "skills"
+  ],
+  "dependencies": {}
+}

@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wolffyx/claude-design-patterns/pattern-check.schema.json",
+  "title": "Pattern Check config",
+  "description": "Schema for .claude/pattern-check.config.json — tunes Pattern Check (Rule 0) hooks and the smell detector.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": {
+      "type": "object",
+      "properties": {
+        "patternNames": { "type": "array", "items": { "type": "string" } },
+        "decisions": { "type": "array", "items": { "type": "string", "enum": ["applied", "extended", "rejected", "refactor-suggest"] } },
+        "minReasonLength": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "blocking": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "fileExtensions": { "type": "array", "items": { "type": "string" } },
+        "excludeGlobs": { "type": "array", "items": { "type": "string" } },
+        "smallEditThreshold": { "type": "integer", "minimum": 0 },
+        "skipDirective": { "type": "string" },
+        "substantiveTriggers": {
+          "type": "object",
+          "properties": {
+            "newClass": { "type": "boolean" },
+            "newInterface": { "type": "boolean" },
+            "newAbstract": { "type": "boolean" },
+            "newExportedFunction": { "type": "boolean" },
+            "newExportedArrowConst": { "type": "boolean" },
+            "newFile": { "type": "boolean" },
+            "diffLineThreshold": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "perPathRules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["glob", "action"],
+        "properties": {
+          "glob": { "type": "string" },
+          "action": { "type": "string", "enum": ["skip", "lite", "strict"] },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "contextPrep": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "siblingNameRegex": { "type": "string" },
+        "maxSiblings": { "type": "integer", "minimum": 0 },
+        "recentDecisionCount": { "type": "integer", "minimum": 0 },
+        "timeBudgetMs": { "type": "integer", "minimum": 0 },
+        "globDepth": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "requireCitationOnExtended": { "type": "boolean" },
+        "requireAntiExtendedClauseOnNewClassReject": { "type": "boolean" },
+        "antiExtendedPhrases": { "type": "array", "items": { "type": "string" } },
+        "requireArrowOnRefactorSuggest": { "type": "boolean" },
+        "refactorSuggestMinReasonLength": { "type": "integer", "minimum": 0 },
+        "enforceAntisignals": { "type": "boolean" },
+        "callerCountWarn": { "type": "boolean" },
+        "callerCountThreshold": { "type": "integer", "minimum": 1 },
+        "callerCountBudgetMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sessionCache": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "path": { "type": "string" },
+        "alreadyInFamilyDays": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "forbiddenPatterns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Factory Method", "Abstract Factory", "Builder", "Singleton", "Prototype",
+          "Adapter", "Facade", "Decorator", "Composite", "Proxy", "Bridge", "Flyweight",
+          "Strategy", "Observer", "Iterator", "Template Method", "Command", "State",
+          "Chain of Responsibility", "Mediator", "Memento", "Visitor"
+        ]
+      }
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "path": { "type": "string" },
+        "blockStatsPath": { "type": "string" }
+      }
+    },
+    "smells": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "switchOnTypeMinCases": { "type": "integer", "minimum": 2 },
+        "instanceofChainMinBranches": { "type": "integer", "minimum": 2 },
+        "repeatedNewMinOccurrences": { "type": "integer", "minimum": 2 },
+        "constructorMaxParams": { "type": "integer", "minimum": 1 },
+        "godClassMinPublicMethods": { "type": "integer", "minimum": 1 },
+        "boundaryViolationPaths": {
+          "type": "object",
+          "properties": {
+            "guardedPath": { "type": "string" },
+            "forbiddenImports": { "type": "array", "items": { "type": "string" } },
+            "allowedPaths": { "type": "array", "items": { "type": "string" } },
+            "routeThroughHint": { "type": "string" }
+          }
+        },
+        "detectors": {
+          "type": "object",
+          "properties": {
+            "singleton":      { "type": "object", "properties": { "enabled": { "type": "boolean" } } },
+            "observer":       { "type": "object", "properties": { "enabled": { "type": "boolean" }, "minClusterSize": { "type": "integer", "minimum": 2 } } },
+            "command":        { "type": "object", "properties": { "enabled": { "type": "boolean" } } },
+            "templateMethod": { "type": "object", "properties": { "enabled": { "type": "boolean" }, "minAbstract": { "type": "integer", "minimum": 1 } } }
+          }
+        },
+        "crossFile": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "cacheTtlDays": { "type": "integer", "minimum": 1 },
+            "cachePath": { "type": "string" }
+          }
+        }
+      }
+    },
+    "project": { "type": "object" }
+  }
+}

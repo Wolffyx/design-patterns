@@ -1,0 +1,85 @@
+{
+  "$schema": "./pattern-check.schema.json",
+
+  "schema": {
+    "minReasonLength": 20
+  },
+
+  "blocking": {
+    "enabled": true,
+    "fileExtensions": ["ts", "tsx"],
+    "excludeGlobs": [
+      "**/*.test.ts", "**/*.test.tsx",
+      "**/*.spec.ts", "**/*.spec.tsx",
+      "**/*.types.ts", "**/*.types.tsx",
+      "**/*.d.ts"
+    ],
+    "smallEditThreshold": 10,
+    "skipDirective": "// pattern-check: skip",
+    "substantiveTriggers": {
+      "newClass": true,
+      "newInterface": true,
+      "newAbstract": true,
+      "newExportedFunction": true,
+      "newExportedArrowConst": true,
+      "newFile": true,
+      "diffLineThreshold": 40
+    }
+  },
+
+  "perPathRules": [
+    { "glob": "**/scripts/**",  "action": "skip", "reason": "build/scripts code — no architecture concern" },
+    { "glob": "**/__mocks__/**", "action": "skip", "reason": "test mocks" }
+  ],
+
+  "validation": {
+    "requireCitationOnExtended": true,
+    "requireAntiExtendedClauseOnNewClassReject": false,
+    "callerCountWarn": true,
+    "callerCountThreshold": 3,
+    "callerCountBudgetMs": 200,
+    "enforceAntisignals": true,
+    "refactorSuggestMinReasonLength": 40,
+    "requireArrowOnRefactorSuggest": true
+  },
+
+  "sessionCache": {
+    "enabled": true,
+    "path": "~/.claude/cache/pattern-family-session.json",
+    "alreadyInFamilyDays": 30
+  },
+
+  "forbiddenPatterns": [],
+
+  "log": {
+    "enabled": true,
+    "path": ".claude/pattern-decision-log.jsonl",
+    "blockStatsPath": ".claude/pattern-block-stats.jsonl"
+  },
+
+  "smells": {
+    "enabled": true,
+    "switchOnTypeMinCases": 4,
+    "instanceofChainMinBranches": 3,
+    "repeatedNewMinOccurrences": 3,
+    "constructorMaxParams": 5,
+    "godClassMinPublicMethods": 8,
+    "boundaryViolationPaths": {
+      "guardedPath": "",
+      "forbiddenImports": [],
+      "allowedPaths": [],
+      "routeThroughHint": "the project's package-boundary interface"
+    },
+    "detectors": {
+      "singleton":      { "enabled": true },
+      "observer":       { "enabled": true, "minClusterSize": 3 },
+      "command":        { "enabled": true },
+      "templateMethod": { "enabled": true, "minAbstract": 2 }
+    },
+    "crossFile": {
+      "enabled": false,
+      "cacheTtlDays": 14,
+      "cachePath": ".claude/cache/pattern-smell-corpus.json"
+    }
+  }
+}
