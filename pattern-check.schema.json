@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/wolffyx/claude-design-patterns/pattern-check.schema.json",
+  "$id": "https://github.com/wolffyx/design-patterns/pattern-check.schema.json",
   "title": "Pattern Check config",
   "description": "Schema for .claude/pattern-check.config.json — tunes Pattern Check (Rule 0) hooks and the smell detector.",
   "type": "object",

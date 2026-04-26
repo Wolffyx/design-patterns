@@ -364,7 +364,7 @@ if (decision === 'extended' && cfg.validation.requireCitationOnExtended && !mode
             '',
             'Suggest preamble:',
             '  Pattern check: ' + (patternName || '<Pattern>') +
-                ' (Tier <N>) \u2014 extended \u2014 mirrors <existing>.ts via src/main/<subdir>/base.ts',
+                ' (Tier <N>) \u2014 extended \u2014 mirrors <existing>.ts via <path/to/base>.ts',
             '',
             'Config toggle: `validation.requireCitationOnExtended` in pattern-check.config.json.',
         ].join('\n'));
@@ -436,7 +436,7 @@ if (decision === 'refactor-suggest') {
             'Example:',
             '  Pattern check: Facade\u2192Facade+Strategy (Tier 1) \u2014 refactor-suggest \u2014 ' +
                 'current facade has 12 methods (god-class risk); splitting by action-type Strategy keyed on ' +
-                'src/main/services/foo.ts would isolate dispatch.',
+                '<path/to/file>.ts would isolate dispatch.',
         ].join('\n'));
     }
     // non-blocking echo so the user sees the suggestion live

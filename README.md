@@ -1,4 +1,4 @@
-# claude-design-patterns
+# design-patterns
 
 Always-on Gang of Four design-pattern catalog plus **Pattern Check (Rule 0)**
 hook enforcement for [Claude Code](https://claude.com/claude-code).
@@ -33,7 +33,7 @@ Singleton, Adapter, Facade, Strategy, Observer, Iterator, Template Method.
 ### Path A — Claude Code plugin (recommended)
 
 ```
-/plugin marketplace add wolffyx/claude-design-patterns
+/plugin marketplace add wolffyx/design-patterns
 /plugin install design-patterns@design-patterns
 ```
 
@@ -44,8 +44,8 @@ so no path patching or symlinks are needed. Update with
 ### Path B — symlink installer
 
 ```bash
-git clone https://github.com/wolffyx/claude-design-patterns.git ~/claude-design-patterns
-cd ~/claude-design-patterns
+git clone https://github.com/wolffyx/design-patterns.git ~/design-patterns
+cd ~/design-patterns
 ./install.sh
 ```
 
@@ -61,12 +61,12 @@ Restart Claude Code afterwards.
 ### Path C — `curl | bash` one-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wolffyx/claude-design-patterns/main/install.sh \
+curl -fsSL https://raw.githubusercontent.com/wolffyx/design-patterns/main/install.sh \
   | bash -s -- --auto-clone
 ```
 
 The `--auto-clone` flag lets `install.sh` git-clone itself into
-`~/claude-design-patterns` before running the rest of the steps.
+`~/design-patterns` before running the rest of the steps.
 
 > **Security note:** piping a remote script into `bash` runs whatever the
 > upstream serves at that moment. Audit the script first if you don't
@@ -93,7 +93,7 @@ Drop the contents into:
 ## Uninstall
 
 ```bash
-~/claude-design-patterns/uninstall.sh
+~/design-patterns/uninstall.sh
 ```
 
 Removes the symlinks, restores any backed-up real directories, strips
@@ -114,14 +114,14 @@ by adding three things to your repo:
 
 ```bash
 # 1. paste Rule 0 at the top of CLAUDE.md
-cat ~/claude-design-patterns/docs/CLAUDE.rule0.md >> CLAUDE.md
+cat ~/design-patterns/docs/CLAUDE.rule0.md >> CLAUDE.md
 
 # 2. project pattern catalogue (template — fill in as families stabilise)
 mkdir -p .claude
-cp ~/claude-design-patterns/docs/design-patterns-project-usage.md .claude/
+cp ~/design-patterns/docs/design-patterns-project-usage.md .claude/
 
 # 3. tunable config (optional)
-cp ~/claude-design-patterns/pattern-check.config.example.json .claude/pattern-check.config.json
+cp ~/design-patterns/pattern-check.config.example.json .claude/pattern-check.config.json
 ```
 
 The config file's `$schema` ref gives editor autocomplete for every tunable

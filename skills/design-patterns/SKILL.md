@@ -133,14 +133,14 @@ modes — the agent's response rules depend on which mode fired:
 ```
 PATTERN-CONTEXT: advisory — read 1–3 siblings before Pattern check
   triggered-by: new class, diff 62 lines
-  family-hint: src/main/adapters/base.ts (Adapter + Strategy — repo backends)
+  family-hint: src/<feature>/base.ts (Adapter + Strategy — example family)
   siblings:
-    - src/main/adapters/base.ts
-    - src/main/adapters/github.ts
+    - src/<feature>/base.ts
+    - src/<feature>/impl-a.ts
   recent-decisions-on-file:
-    - 2026-04-18 extended Adapter — "gitea.ts mirrors github.ts shape"
+    - 2026-04-18 extended Adapter — "impl-b.ts mirrors impl-a.ts shape"
   imports-in-payload:
-    - ../adapters/base (looks like family extension)
+    - ../<feature>/base (looks like family extension)
   action: Read 1–3 of the listed paths, then emit Pattern check citing one.
 END-PATTERN-CONTEXT
 ```
@@ -157,8 +157,8 @@ siblings) before emitting `Pattern check:`. The preamble must either:
 
 ```
 PATTERN-CONTEXT: already-in-family
-  family: Adapter + Strategy (repo backends) — via src/main/adapters/base.ts
-  last-extend: 2026-04-18 — github.ts shape
+  family: Adapter + Strategy (example family) — via src/<feature>/base.ts
+  last-extend: 2026-04-18 — impl-a.ts shape
   note: no re-read required; emit `Pattern check: <pattern> — extended —
         continuing existing integration via <path>`.
 END-PATTERN-CONTEXT
@@ -186,7 +186,7 @@ Required form for `refactor-suggest`:
 ```
 Pattern check: Facade→Facade+Strategy (Tier 1) — refactor-suggest —
   current facade has 12 methods (god-class risk); splitting by action-type
-  Strategy keyed on src/main/services/foo.ts would isolate dispatch.
+  Strategy keyed on src/<feature>/dispatcher.ts would isolate dispatch.
 ```
 
 Validator requirements: arrow `→` in pattern name, reason ≥ 40 chars,
@@ -195,12 +195,12 @@ cite a real `.ts`/`.tsx` path.
 ### Worked examples
 
 **Example A (Mode A → extended)**. PATTERN-CONTEXT lists
-`src/main/adapters/base.ts` + siblings. Agent Reads `base.ts`, sees the
-`IRepoAdapter` interface, emits:
+`src/<feature>/base.ts` + siblings. Agent Reads `base.ts`, sees the
+`IPort` interface, emits:
 
 ```
-Pattern check: Adapter (Tier 1) — extended — new gitea.ts implements
-  IRepoAdapter from src/main/adapters/base.ts; mirrors github.ts shape.
+Pattern check: Adapter (Tier 1) — extended — new impl-b.ts implements
+  IPort from src/<feature>/base.ts; mirrors impl-a.ts shape.
 ```
 
 **Example B (Mode A → rejected after scan)**. PATTERN-CONTEXT lists three
@@ -216,7 +216,7 @@ Pattern check: no GoF pattern (-) — rejected — scanned 3 siblings, no
 
 ```
 Pattern check: Adapter (Tier 1) — extended — continuing existing
-  integration via src/main/adapters/base.ts.
+  integration via src/<feature>/base.ts.
 ```
 
 **Example D (Mode C → refactor-suggest)**. PATTERN-CONTEXT shows
@@ -224,9 +224,9 @@ Pattern check: Adapter (Tier 1) — extended — continuing existing
 
 ```
 Pattern check: Facade→Facade+Strategy (Tier 1) — refactor-suggest —
-  worktree-manager has 12 public methods (god-class); splitting
-  branch/commit/cleanup into strategies keyed on action via
-  src/main/services/git-worktree-manager.ts would isolate dispatch.
+  facade has 12 public methods (god-class); splitting verbs into
+  strategies keyed on action via src/<feature>/dispatcher.ts would
+  isolate dispatch.
 ```
 
 ### Anti-overuse rule still dominates

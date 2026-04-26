@@ -49,7 +49,7 @@ const refFiles = fs.readdirSync(REFS_DIR)
 const parts = [];
 parts.push(`# Design Patterns — Bundled Catalog`);
 parts.push('');
-parts.push(`> Generated from \`claude-design-patterns\`${pkgVersion ? ` v${pkgVersion}` : ''}.`);
+parts.push(`> Generated from \`design-patterns\`${pkgVersion ? ` v${pkgVersion}` : ''}.`);
 parts.push('> Self-contained markdown — paste into your agent\'s rules/system-prompt.');
 parts.push('> Hooks (Pattern Check enforcement) are Claude Code-only and not included here.');
 parts.push('');

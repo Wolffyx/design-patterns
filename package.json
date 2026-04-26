@@ -1,5 +1,5 @@
 {
-  "name": "claude-design-patterns",
+  "name": "design-patterns",
   "version": "1.0.0",
   "description": "Gang of Four design-pattern catalog plus Pattern Check (Rule 0) hook enforcement for Claude Code.",
   "license": "MIT",
@@ -29,7 +29,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wolffyx/claude-design-patterns.git"
+    "url": "git+https://github.com/wolffyx/design-patterns.git"
   },
   "keywords": [
     "claude-code",

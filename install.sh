@@ -14,15 +14,15 @@
 #     (replacing $HOME with the user's actual home)
 #
 # Recommended path: install via Claude Code plugin instead.
-#   /plugin marketplace add <user>/claude-design-patterns
+#   /plugin marketplace add <user>/design-patterns
 #   /plugin install design-patterns@design-patterns
 # This script is provided for older CC versions or users who want a
 # single-machine install outside the plugin sandbox.
 
 set -euo pipefail
 
-REPO_DEFAULT_DIR="${HOME}/claude-design-patterns"
-REPO_GIT_URL="${CLAUDE_DESIGN_PATTERNS_REPO:-https://github.com/wolffyx/claude-design-patterns.git}"
+REPO_DEFAULT_DIR="${HOME}/design-patterns"
+REPO_GIT_URL="${CLAUDE_DESIGN_PATTERNS_REPO:-https://github.com/wolffyx/design-patterns.git}"
 AUTO_CLONE=0
 
 for arg in "$@"; do
@@ -162,6 +162,6 @@ Next:
 Uninstall:  '$REPO/uninstall.sh'
 
 Tip: prefer the Claude Code plugin install when possible:
-       /plugin marketplace add wolffyx/claude-design-patterns
+       /plugin marketplace add wolffyx/design-patterns
        /plugin install design-patterns@design-patterns
 EOF
