@@ -7,12 +7,21 @@
 
   "blocking": {
     "enabled": true,
-    "fileExtensions": ["ts", "tsx"],
+    "fileExtensions": [
+      "ts", "tsx", "mts", "cts",
+      "py", "pyi",
+      "java", "cs", "go", "rs",
+      "cpp", "cc", "cxx", "hpp", "hh", "hxx", "h"
+    ],
     "excludeGlobs": [
-      "**/*.test.ts", "**/*.test.tsx",
-      "**/*.spec.ts", "**/*.spec.tsx",
-      "**/*.types.ts", "**/*.types.tsx",
-      "**/*.d.ts"
+      "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx",
+      "**/*.types.ts", "**/*.types.tsx", "**/*.d.ts",
+      "**/test_*.py", "**/*_test.py", "**/conftest.py",
+      "**/*Test.java", "**/*Tests.java", "**/*IT.java",
+      "**/*Test.cs", "**/*Tests.cs", "**/*.Designer.cs", "**/*.g.cs", "**/*.generated.cs",
+      "**/*_test.go", "**/*.pb.go", "**/mock_*.go",
+      "**/*_test.cpp", "**/*_test.cc", "**/*Test.cpp",
+      "**/tests/**", "**/*_test.rs", "**/benches/**"
     ],
     "smallEditThreshold": 10,
     "skipDirective": "// pattern-check: skip",
@@ -28,8 +37,10 @@
   },
 
   "perPathRules": [
-    { "glob": "**/scripts/**",  "action": "skip", "reason": "build/scripts code — no architecture concern" },
-    { "glob": "**/__mocks__/**", "action": "skip", "reason": "test mocks" }
+    { "glob": "**/scripts/**",   "action": "skip", "reason": "build/scripts code — no architecture concern" },
+    { "glob": "**/__mocks__/**", "action": "skip", "reason": "test mocks" },
+    { "glob": "**/migrations/**", "action": "skip", "reason": "generated DB migrations" },
+    { "glob": "**/*_pb2.py",     "action": "skip", "reason": "generated protobuf stubs" }
   ],
 
   "validation": {

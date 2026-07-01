@@ -35,6 +35,15 @@ remove_symlink() {
 remove_symlink "$SKILL_LINK" "$REPO"
 remove_symlink "$HOOKS_LINK" "$REPO"
 
+# remove command symlinks that point into this repo
+if [ -d "$CLAUDE_DIR/commands" ]; then
+  for cmd in "$REPO"/commands/*.md; do
+    [ -e "$cmd" ] || continue
+    remove_symlink "$CLAUDE_DIR/commands/$(basename "$cmd")" "$REPO"
+  done
+  rmdir "$CLAUDE_DIR/commands" 2>/dev/null || true
+fi
+
 # --- restore latest backup if any ----------------------------------------
 
 LATEST_BACKUP="$(ls -1dt "$CLAUDE_DIR/backups/design-patterns-"* 2>/dev/null | head -n 1 || true)"

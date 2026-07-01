@@ -4,18 +4,25 @@ description: On-demand cross-file design-pattern review of the current project.
 
 Run a project-wide design-pattern review.
 
-1. Run `node ${CLAUDE_PLUGIN_ROOT}/hooks/analyze-log.js --format json --since 30d`
+First resolve the hooks directory: if the environment variable
+`CLAUDE_PLUGIN_ROOT` is set, use `HOOKS="$CLAUDE_PLUGIN_ROOT/hooks"`; otherwise
+use `HOOKS="$HOME/.claude/hooks"` (the symlink-install location). Use `$HOOKS`
+in the commands below.
+
+1. Run `node "$HOOKS/analyze-log.js" --format json --since 30d`
    and capture the output.
 
-2. List `.ts` and `.tsx` files under `src/` (cap at 200 files; stop early if
-   the repo doesn't have a `src/` — try `apps/` and `packages/` next).
+2. List source files under `src/` in any supported language — `*.ts`, `*.tsx`,
+   `*.py`, `*.java`, `*.cs`, `*.go`, `*.cpp`, `*.cc`, `*.cxx`, `*.hpp`, `*.rs`
+   (cap at 200 files; stop early if the repo doesn't have a `src/` — try
+   `apps/`, `packages/`, `lib/`, `cmd/`, and the repo root next).
 
 3. For each file, synthesize a PostToolUse payload and run the smell
    detector:
 
    ```
    echo "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"<abs-path>\"}}" \
-     | node ${CLAUDE_PLUGIN_ROOT}/hooks/pattern-smell-detector.js
+     | node "$HOOKS/pattern-smell-detector.js"
    ```
 
    Capture stderr for each run.

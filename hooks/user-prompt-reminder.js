@@ -12,8 +12,8 @@
  */
 
 process.stdout.write(
-    'REMINDER (Rule 0): If this turn writes or edits a .ts/.tsx file with substantive ' +
-    'new logic (class, interface, abstract, exported function, arrow-const, or >40-line ' +
+    'REMINDER (Rule 0): If this turn writes or edits a source file (TS/Python/Java/C#/Go/C++/Rust) ' +
+    'with substantive new logic (class, interface, struct, trait, abstract, exported/public function, or >40-line ' +
     'diff), emit `Pattern check: <Pattern> (Tier N) — <decision> — <reason ≥20 chars>` ' +
     'before the Write/Edit tool call. Most bug fixes answer `no GoF pattern — rejected`. ' +
     'See .claude/skills/design-patterns/SKILL.md and .claude/design-patterns-project-usage.md.\n'

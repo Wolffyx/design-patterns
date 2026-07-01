@@ -67,11 +67,8 @@ const DEFAULT_CONFIG = {
         },
     },
     blocking: {
-        fileExtensions: ['ts', 'tsx'],
-        excludeGlobs: [
-            '**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx',
-            '**/*.types.ts', '**/*.types.tsx', '**/*.d.ts',
-        ],
+        fileExtensions: shared.langs.allExtensions(),
+        excludeGlobs: shared.langs.allExcludeGlobs(),
     },
 };
 
@@ -165,7 +162,8 @@ function emit(fileRel, fileText, finding) {
 // --- existing detectors (now returning {line, signature?}) ----------------
 
 function detectSwitchOnType(text, minCases) {
-    const re = /switch\s*\(\s*\w+\.(type|kind|variant|tag)\s*\)\s*{/g;
+    // parens optional so Go/C# value-switches (`switch x.kind {`) match too
+    const re = /\bswitch\s*\(?\s*\w+\.(type|kind|variant|tag)\s*\)?\s*{/g;
     const findings = [];
     let m;
     while ((m = re.exec(text)) !== null) {
@@ -209,23 +207,24 @@ function detectInstanceofChain(text, minBranches) {
     let currentRun = 0;
     const findings = [];
     const classes = [];
-    const re = /\b(instanceof|typeof)\b\s+(\w+)?/g;
+    // TS/Java: `instanceof`/`typeof`; Python: `isinstance(x, Type)`
+    const re = /\b(?:instanceof|typeof)\b\s+(\w+)?|\bisinstance\s*\(\s*[\w.]+\s*,\s*(\w+)/g;
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const isBranch =
-            /\bif\s*\(.*\b(instanceof|typeof)\b/.test(line) ||
-            /\belse\s+if\s*\(.*\b(instanceof|typeof)\b/.test(line);
+            /\b(?:else\s+)?if\s*\(.*\b(?:instanceof|typeof)\b/.test(line) ||
+            /\b(?:el)?if\b.*\bisinstance\s*\(/.test(line);
         if (isBranch) {
             if (currentRun === 0) runStartLine = i + 1;
             currentRun++;
             let mm;
-            while ((mm = re.exec(line)) !== null) if (mm[2]) classes.push(mm[2]);
+            while ((mm = re.exec(line)) !== null) { const c = mm[1] || mm[2]; if (c) classes.push(c); }
         } else if (line.trim().length > 0 && !/^\s*}/.test(line)) {
             if (currentRun >= minBranches) {
                 findings.push({
                     smellId: 'instanceof-chain',
                     line: runStartLine,
-                    message: `instanceof/typeof chain (${currentRun} branches)`,
+                    message: `instanceof/typeof/isinstance chain (${currentRun} branches)`,
                     suggest: 'Strategy or Visitor',
                     refSlug: 'strategy',
                     signature: classes.slice().sort().join(','),
@@ -523,7 +522,7 @@ const filePath = toolInput.file_path || '';
 if (!filePath) process.exit(0);
 
 const extOk = config.blocking.fileExtensions.some(ext =>
-    new RegExp('\\.' + ext + '$', 'i').test(filePath),
+    new RegExp('\\.' + ext.replace(/[.+*?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(filePath),
 );
 if (!extOk) process.exit(0);
 

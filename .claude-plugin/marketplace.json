@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "design-patterns",
-      "description": "22 GoF patterns, Tier-1 priority list, hook-enforced preamble on every TS/TSX edit, smell detection (Singleton/Observer/Command/Template Method + 6 more), cross-file duplicate finder, decision-log analyzer, /pattern-review command.",
+      "description": "22 GoF patterns (code in TypeScript, Python, Java, C#, Go, C++, Rust), Tier-1 priority list, hook-enforced preamble on every source edit across all 7 languages, smell detection (Singleton/Observer/Command/Template Method + 6 more), cross-file duplicate finder, decision-log analyzer, /pattern-review command.",
       "source": "./",
       "category": "code-quality"
     }

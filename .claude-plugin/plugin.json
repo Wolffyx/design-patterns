@@ -1,6 +1,6 @@
 {
   "name": "design-patterns",
-  "description": "Always-on Gang of Four design-pattern catalog (22 patterns, refactoring.guru) plus Pattern Check (Rule 0) hook enforcement on every TypeScript edit.",
+  "description": "Always-on Gang of Four design-pattern catalog (22 patterns, refactoring.guru) plus Pattern Check (Rule 0) hook enforcement on every source edit (TypeScript, Python, Java, C#, Go, C++, Rust).",
   "author": {
     "name": "wolffyx",
     "url": "https://github.com/wolffyx"

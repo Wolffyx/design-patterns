@@ -131,7 +131,8 @@ Paste this section near the top of your `CLAUDE.md`:
 ```markdown
 ## Rule 0 \u2014 Pattern Check (mandatory preamble)
 
-Before ANY tool call that writes or edits a `.ts`/`.tsx` source file with
+Before ANY tool call that writes or edits a source file (TypeScript, Python,
+Java, C#, Go, C++, Rust) with
 **substantive new logic** \u2014 a new `class`, `interface`, `abstract` class,
 new exported `function`, new exported arrow-const, a brand-new file, or a
 diff large enough to imply structural change \u2014 emit ONE line first.

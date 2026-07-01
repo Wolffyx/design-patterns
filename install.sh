@@ -108,6 +108,17 @@ ln -sfn "$REPO/hooks" "$HOOKS_LINK"
 echo "▸ symlinked $SKILL_LINK"
 echo "▸ symlinked $HOOKS_LINK"
 
+# --- symlink slash commands into ~/.claude/commands/ ----------------------
+# Symlink files individually (not the dir) so we don't hijack the user's
+# existing commands directory.
+
+mkdir -p "$CLAUDE_DIR/commands"
+for cmd in "$REPO"/commands/*.md; do
+  [ -e "$cmd" ] || continue
+  ln -sfn "$cmd" "$CLAUDE_DIR/commands/$(basename "$cmd")"
+  echo "▸ symlinked command /$(basename "$cmd" .md)"
+done
+
 # --- merge hooks block into settings.json ---------------------------------
 
 SETTINGS="$CLAUDE_DIR/settings.json"

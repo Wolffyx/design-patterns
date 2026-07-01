@@ -3,14 +3,17 @@
 Always-on Gang of Four design-pattern catalog plus **Pattern Check (Rule 0)**
 hook enforcement for [Claude Code](https://claude.com/claude-code).
 
-- 22 GoF patterns, sourced from refactoring.guru, in `skills/design-patterns/references/`.
+- 22 GoF patterns, sourced from refactoring.guru, with code examples in
+  TypeScript, Python, Java, C#, Go, C++, and Rust, in `skills/design-patterns/references/`.
 - 10 smell detectors that suggest a pattern when code shape calls for one
   (Strategy, State, Visitor, Factory Method, Builder, Facade, Adapter,
   Singleton, Observer, Command, Template Method).
 - Cross-file duplicate detector — flags shared shapes across files as strong
   Strategy/Visitor candidates.
-- `PreToolUse` hook that **blocks** Write/Edit/MultiEdit on `.ts/.tsx`
-  files until the agent emits a `Pattern check: …` preamble.
+- `PreToolUse` hook that **blocks** Write/Edit/MultiEdit on TypeScript,
+  Python, Java, C#, Go, C++, and Rust files until the agent emits a
+  `Pattern check: …` preamble. Language detection lives in
+  `hooks/_languages.js` — add a language with one entry.
 - Decision-log analyzer (`analyze-log.js`) — surfaces drift, hotspots,
   per-path pattern frequency.
 - `/pattern-review` slash command — on-demand cross-file project audit.
@@ -233,7 +236,8 @@ list. Highlights:
 - `blocking.smallEditThreshold` — under this, edits with no new exported
   symbol skip the preamble check (default 10).
 - `validation.requireCitationOnExtended` — when `true`, an `extended`
-  decision must cite a `.ts/.tsx` path that resolves on disk.
+  decision must cite a source path (in the edited file's language) that
+  resolves on disk.
 - `validation.callerCountWarn` — emits a warning when a `rejected` reason
   claims "isolated" but ≥3 callers exist.
 - `forbiddenPatterns` — block `applied` of any listed pattern (use

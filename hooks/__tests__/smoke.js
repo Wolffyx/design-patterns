@@ -172,6 +172,68 @@ check('non-ts file is ignored', () => {
 });
 
 // ------------------------------------------------------------------
+// check-pattern-preamble.js — multi-language coverage
+// ------------------------------------------------------------------
+process.stdout.write('check-pattern-preamble (multi-language)\n');
+
+const LANG_CASES = [
+    { lang: 'Python', file: 'src/svc.py',  content: 'class PaymentService:\n    def charge(self, amt):\n        return amt\n' },
+    { lang: 'Java',   file: 'src/Svc.java', content: 'public class PaymentService {\n  public void charge(int amt) {}\n}\n' },
+    { lang: 'C#',     file: 'src/Svc.cs',   content: 'public abstract class PaymentService {\n  public abstract void Charge(int amt);\n}\n' },
+    { lang: 'Go',     file: 'src/svc.go',   content: 'package svc\ntype PaymentService struct {\n  balance int\n}\n' },
+    { lang: 'C++',    file: 'src/svc.cpp',  content: 'class PaymentService {\npublic:\n  virtual void charge(int amt) = 0;\n};\n' },
+    { lang: 'Rust',   file: 'src/svc.rs',   content: 'pub trait Payment {\n  fn charge(&self, amt: u32);\n}\n' },
+];
+
+for (const c of LANG_CASES) {
+    check(`blocks new ${c.lang} type without preamble`, () => {
+        const r = run('check-pattern-preamble.js', {
+            session_id: 'smoke',
+            tool_name: 'Write',
+            tool_input: { file_path: path.join(SANDBOX, c.file), content: c.content },
+        });
+        assert(r.status === 2, `${c.lang} should block; got status=${r.status}, stderr=${r.stderr}`);
+    });
+}
+
+check('Python # skip directive bypasses block', () => {
+    const r = run('check-pattern-preamble.js', {
+        session_id: 'smoke',
+        tool_name: 'Write',
+        tool_input: {
+            file_path: path.join(SANDBOX, 'src/gen.py'),
+            content: '# pattern-check: skip generated protobuf stubs\nclass Foo:\n    pass\n',
+        },
+    });
+    assert(r.status === 0, `Python # skip should allow; got ${r.status}`);
+});
+
+check('Python # preamble in payload allows', () => {
+    const r = run('check-pattern-preamble.js', {
+        session_id: 'smoke',
+        tool_name: 'Write',
+        tool_input: {
+            file_path: path.join(SANDBOX, 'src/svc2.py'),
+            content: '# Pattern check: no GoF pattern (-) — rejected — single-use service, one caller, no second impl expected.\nclass PaymentService:\n    def charge(self, amt):\n        return amt\n',
+        },
+    });
+    assert(r.status === 0, `Python # preamble should allow; got ${r.status}, stderr=${r.stderr}`);
+});
+
+check('Go unexported func is not a trigger (small edit)', () => {
+    const r = run('check-pattern-preamble.js', {
+        session_id: 'smoke',
+        tool_name: 'Edit',
+        tool_input: {
+            file_path: path.join(SANDBOX, 'src/h.go'),
+            old_string: 'package h',
+            new_string: 'func processOrder(id int) {}',
+        },
+    });
+    assert(r.status === 0, `Go unexported func should allow; got ${r.status}`);
+});
+
+// ------------------------------------------------------------------
 // pattern-smell-detector.js
 // ------------------------------------------------------------------
 process.stdout.write('pattern-smell-detector\n');
@@ -254,6 +316,42 @@ function run(n: any) {
         tool_name: 'Write', tool_input: { file_path: f },
     });
     assert(r.stderr.includes('switch-on-type'), `expected switch-on-type; got: ${r.stderr}`);
+});
+
+check('detects isinstance chain (Python)', () => {
+    const f = writeFile('src/dispatch.py', `
+def handle(x):
+    if isinstance(x, Cat): return 1
+    elif isinstance(x, Dog): return 2
+    elif isinstance(x, Bird): return 3
+    return 0
+`);
+    const r = run('pattern-smell-detector.js', {
+        tool_name: 'Write', tool_input: { file_path: f },
+    });
+    assert(r.stderr.includes('isinstance') || r.stderr.includes('chain'),
+        `expected isinstance chain; got: ${r.stderr}`);
+});
+
+check('detects god class (Go struct methods)', () => {
+    const f = writeFile('src/big.go', `
+package big
+type Manager struct{}
+func (m *Manager) A() {}
+func (m *Manager) B() {}
+func (m *Manager) C() {}
+func (m *Manager) D() {}
+func (m *Manager) E() {}
+func (m *Manager) F() {}
+func (m *Manager) G() {}
+func (m *Manager) H() {}
+func (m *Manager) I() {}
+`);
+    const r = run('pattern-smell-detector.js', {
+        tool_name: 'Write', tool_input: { file_path: f },
+    });
+    // advisory only — assert the hook runs cleanly on Go input, no crash
+    assert(r.status === 0, `smell detector should exit 0 on Go; got ${r.status}, stderr=${r.stderr}`);
 });
 
 check('ignore directive suppresses singleton', () => {

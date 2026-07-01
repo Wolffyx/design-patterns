@@ -7,9 +7,10 @@ so any agent operating on the repo sees it on every turn.
 
 ## Rule 0 (Pattern Check)
 
-Before ANY Write/Edit/MultiEdit to a `.ts`/`.tsx` source file with substantive
-new logic (new function, exported symbol, class, interface, abstract, or
-diff >40 lines), emit ONE line first. Most edits answer "no GoF pattern":
+Before ANY Write/Edit/MultiEdit to a source file — TypeScript, Python, Java,
+C#, Go, C++, or Rust — with substantive new logic (new class, interface,
+struct, trait, abstract, exported/public function, or diff >40 lines), emit
+ONE line first. Most edits answer "no GoF pattern":
 
 ```
 Pattern check: no GoF pattern (-) — rejected — <reason ≥20 chars>.
@@ -34,10 +35,12 @@ Singleton, Adapter, Facade, Strategy, Observer, Iterator, Template Method.
 **Anti-overuse rule:** bug fixes, <50-line code with one caller, or code the
 repo already solves — answer `no GoF pattern`. Most edits are this.
 
-**Bypass** for mechanical codemods / bulk renames:
+**Bypass** for mechanical codemods / bulk renames (use the file's line-comment
+token — `//` for TS/Java/C#/Go/C++/Rust, `#` for Python):
 
 ```
 // pattern-check: skip <reason>   ← add to payload
+# pattern-check: skip <reason>    ← Python
 ```
 
 ### Enforcement (when this plugin is installed)

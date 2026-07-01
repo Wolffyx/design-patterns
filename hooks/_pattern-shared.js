@@ -18,6 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const langs = require('./_languages');
 
 // --- default config (both global fallback + schema for overlays) -----------
 
@@ -35,11 +36,8 @@ const DEFAULT_CONFIG = {
     },
     blocking: {
         enabled: true,
-        fileExtensions: ['ts', 'tsx'],
-        excludeGlobs: [
-            '**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx',
-            '**/*.types.ts', '**/*.types.tsx', '**/*.d.ts',
-        ],
+        fileExtensions: langs.allExtensions(),
+        excludeGlobs: langs.allExcludeGlobs(),
         substantiveTriggers: {
             newClass: true,
             newInterface: true,
@@ -203,11 +201,14 @@ function buildPayloadInfo(tool, toolInput) {
     return info;
 }
 
-const CLASS_RE = /^[ \t]*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w+\s*[{<]/m;
-const INTERFACE_RE = /^[ \t]*(?:export\s+)?interface\s+\w+\s*[{<]/m;
-const ABSTRACT_RE = /^[ \t]*(?:export\s+)?abstract\s+class\s+\w+\s*[{<]/m;
-const EXPORTED_FN_RE = /^[ \t]*export\s+(?:default\s+)?(?:async\s+)?function\s+\w+\s*[<(]/m;
-const EXPORTED_ARROW_RE = /^[ \t]*export\s+(?:default\s+)?const\s+\w+\s*(?::[^=]+)?=\s*(?:async\s+)?(?:\([^)]*\)|\w+)\s*=>/m;
+// TS regexes are sourced from the language engine so there is one definition.
+// Kept as named consts for the `regex` export and legacy single-language callers.
+const _TS = langs.get('ts').triggers;
+const CLASS_RE = _TS.newClass;
+const INTERFACE_RE = _TS.newInterface;
+const ABSTRACT_RE = _TS.newAbstract;
+const EXPORTED_FN_RE = _TS.newExportedFunction;
+const EXPORTED_ARROW_RE = _TS.newExportedArrowConst;
 
 function normalizeWhitespace(s) {
     return (s || '').replace(/\s+/g, ' ').trim();
@@ -217,14 +218,15 @@ function countNonWhitespaceLines(s) {
     return (s || '').split('\n').filter(l => l.trim().length > 0).length;
 }
 
-function detectTriggers(payloadInfo, triggers) {
+function detectTriggers(payloadInfo, triggers, langId) {
+    const L = langs.get(langId || 'ts').triggers;
     const t = payloadInfo.newText;
     const reasons = [];
-    if (triggers.newClass && CLASS_RE.test(t)) reasons.push('new class');
-    if (triggers.newInterface && INTERFACE_RE.test(t)) reasons.push('new interface');
-    if (triggers.newAbstract && ABSTRACT_RE.test(t)) reasons.push('new abstract class');
-    if (triggers.newExportedFunction && EXPORTED_FN_RE.test(t)) reasons.push('new exported function');
-    if (triggers.newExportedArrowConst && EXPORTED_ARROW_RE.test(t)) reasons.push('new exported arrow-const');
+    if (triggers.newClass && L.newClass && L.newClass.test(t)) reasons.push('new class');
+    if (triggers.newInterface && L.newInterface && L.newInterface.test(t)) reasons.push('new interface');
+    if (triggers.newAbstract && L.newAbstract && L.newAbstract.test(t)) reasons.push('new abstract class');
+    if (triggers.newExportedFunction && L.newExportedFunction && L.newExportedFunction.test(t)) reasons.push('new exported function');
+    if (triggers.newExportedArrowConst && L.newExportedArrowConst && L.newExportedArrowConst.test(t)) reasons.push('new exported arrow-const');
     if (triggers.newFile && payloadInfo.isNewFile && countNonWhitespaceLines(t) > 0) {
         reasons.push('new file');
     }
@@ -239,9 +241,15 @@ function detectTriggers(payloadInfo, triggers) {
     return reasons;
 }
 
-function hasNewSymbol(text) {
-    return CLASS_RE.test(text) || INTERFACE_RE.test(text) || ABSTRACT_RE.test(text) ||
-        EXPORTED_FN_RE.test(text) || EXPORTED_ARROW_RE.test(text);
+function hasNewSymbol(text, langId) {
+    const L = langs.get(langId || 'ts').triggers;
+    return Boolean(
+        (L.newClass && L.newClass.test(text)) ||
+        (L.newInterface && L.newInterface.test(text)) ||
+        (L.newAbstract && L.newAbstract.test(text)) ||
+        (L.newExportedFunction && L.newExportedFunction.test(text)) ||
+        (L.newExportedArrowConst && L.newExportedArrowConst.test(text)),
+    );
 }
 
 function isWhitespaceOnlyDiff(payloadInfo) {
@@ -383,7 +391,7 @@ function shouldIgnore(text, line, smellId) {
     const lines = String(text).split('\n');
     const idx = line - 1;
     if (idx < 0 || idx >= lines.length) return false;
-    const re = /\/\/\s*pattern-smell:\s*ignore\s+([\w*\-]+)/i;
+    const re = /(?:\/\/|#)\s*pattern-smell:\s*ignore\s+([\w*\-]+)/i;
     for (const probe of [lines[idx], lines[idx - 1]]) {
         if (!probe) continue;
         const m = probe.match(re);
@@ -423,6 +431,10 @@ function parseLogEntries(lines) {
 
 module.exports = {
     DEFAULT_CONFIG,
+    langs,
+    langIdForFile: langs.langIdForFile,
+    commentTokens: langs.commentTokens,
+    pathReForExts: langs.pathReForExts,
     loadConfig,
     mergeConfig,
     readStdin,

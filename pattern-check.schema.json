@@ -19,10 +19,19 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "fileExtensions": { "type": "array", "items": { "type": "string" } },
-        "excludeGlobs": { "type": "array", "items": { "type": "string" } },
+        "fileExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Source extensions the preamble + smell hooks gate on. Omit to cover all supported languages (TS, Python, Java, C#, Go, C++, Rust). Regex metacharacters in an extension (e.g. `c++`) are escaped safely.",
+          "examples": [["ts", "tsx", "py", "pyi", "java", "cs", "go", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "rs"]]
+        },
+        "excludeGlobs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Test/generated files skipped. Omit to use the per-language union (e.g. **/*.spec.ts, **/test_*.py, **/*_test.go, **/*Test.java)."
+        },
         "smallEditThreshold": { "type": "integer", "minimum": 0 },
-        "skipDirective": { "type": "string" },
+        "skipDirective": { "type": "string", "description": "Literal bypass marker (default `// pattern-check: skip`). The `#`-comment form is also honoured for Python regardless of this value." },
         "substantiveTriggers": {
           "type": "object",
           "properties": {
@@ -44,7 +53,7 @@
         "required": ["glob", "action"],
         "properties": {
           "glob": { "type": "string" },
-          "action": { "type": "string", "enum": ["skip", "lite", "strict"] },
+          "action": { "type": "string", "enum": ["skip", "lite", "strict", "interface-first"] },
           "reason": { "type": "string" }
         }
       }

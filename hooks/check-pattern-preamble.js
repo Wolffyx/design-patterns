@@ -93,11 +93,14 @@ function antisignalHit(patternName, reason) {
 
 // --- caller-count (I5) ----------------------------------------------------
 
-function exportedSymbolNames(text) {
+function exportedSymbolNames(text, langId) {
     const names = new Set();
-    const re = /(?:^|\n)[ \t]*export\s+(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(?:class|interface|function|const|type)\s+(\w+)/g;
+    const re = shared.langs.symbolNameRegex(langId || 'ts');
     let m;
-    while ((m = re.exec(text || '')) !== null) names.add(m[1]);
+    while ((m = re.exec(text || '')) !== null) {
+        const name = m.slice(1).find(Boolean); // multi-group langs (Go): first defined
+        if (name) names.add(name);
+    }
     return Array.from(names);
 }
 
@@ -120,8 +123,7 @@ function callerCount(name, cfg, selfFile) {
             if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'dist') continue;
             const full = path.join(dir, e.name);
             if (e.isDirectory()) { walk(full, depth + 1); continue; }
-            if (!/\.(ts|tsx)$/.test(e.name)) continue;
-            if (/\.(test|spec|d)\.(ts|tsx)$/.test(e.name)) continue;
+            if (!shared.langs.langIdForFile(e.name)) continue;
             if (path.resolve(full) === path.resolve(selfFile)) continue;
             let txt = '';
             try { txt = fs.readFileSync(full, 'utf8'); } catch { continue; }
@@ -152,11 +154,9 @@ function isAlreadyInFamily(cfg, sessionId, filePath) {
 
 // --- path-citation resolver (for I2 extended rule) -------------------------
 
-const PATH_RE = /([A-Za-z_][\w./\-]*\.(?:ts|tsx))\b/;
-
-function citationPathResolves(reason) {
+function citationPathResolves(reason, exts) {
     if (!reason) return null;
-    const m = reason.match(PATH_RE);
+    const m = reason.match(shared.pathReForExts(exts));
     if (!m) return null;
     const candidate = m[1];
     const cwd = process.cwd();
@@ -192,8 +192,12 @@ const sessionId = input.session_id || '';
 
 // extension filter
 const extOk = cfg.blocking.fileExtensions.some(ext =>
-    new RegExp('\\.' + ext + '$', 'i').test(filePath));
+    new RegExp('\\.' + ext.replace(/[.+*?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(filePath));
 if (!extOk) exitAllow();
+
+// resolve the source language — drives symbol detection and message wording
+const langId = shared.langIdForFile(filePath) || 'ts';
+const fileExt = (filePath.match(/\.([A-Za-z0-9+]+)$/) || [])[1] || 'ts';
 
 // exclusion globs
 if (cfg.blocking.excludeGlobs.some(g => shared.matchesGlob(filePath, g))) exitAllow();
@@ -201,9 +205,11 @@ if (cfg.blocking.excludeGlobs.some(g => shared.matchesGlob(filePath, g))) exitAl
 const payload = shared.buildPayloadInfo(tool, toolInput);
 if (!payload.newText && !payload.oldText) exitAllow();
 
-// skip directive
+// skip directive — honour any language's line-comment prefix (// or #)
 const skip = cfg.blocking.skipDirective || '// pattern-check: skip';
-if (payload.newText.includes(skip) || payload.oldText.includes(skip)) exitAllow();
+const skipRe = /(?:\/\/|#)\s*pattern-check:\s*skip/;
+if (payload.newText.includes(skip) || payload.oldText.includes(skip) ||
+    skipRe.test(payload.newText) || skipRe.test(payload.oldText)) exitAllow();
 
 // whitespace-only diff
 if (shared.isWhitespaceOnlyDiff(payload)) exitAllow();
@@ -215,10 +221,10 @@ const triggers = shared.triggersForPathRule(pathRule, cfg.blocking.substantiveTr
 
 // small edit with no new symbol → allow
 if (shared.isSmallEdit(payload, cfg.blocking.smallEditThreshold)) {
-    if (!shared.hasNewSymbol(payload.newText)) exitAllow();
+    if (!shared.hasNewSymbol(payload.newText, langId)) exitAllow();
 }
 
-const triggeredReasons = shared.detectTriggers(payload, triggers);
+const triggeredReasons = shared.detectTriggers(payload, triggers, langId);
 if (triggeredReasons.length === 0) exitAllow();
 
 // find preamble (payload first, then transcript)
@@ -232,7 +238,7 @@ if (!preamble) {
         '    Pattern check: no GoF pattern (-) \u2014 rejected \u2014 <\u226520 chars explaining why inline is correct>',
         '  or if a pattern genuinely fits:',
         '    Pattern check: <PatternName> (Tier <N>) \u2014 applied  \u2014 <reason \u226520 chars>',
-        '    Pattern check: <PatternName> (Tier <N>) \u2014 extended \u2014 <cite existing .ts/.tsx path>',
+        '    Pattern check: <PatternName> (Tier <N>) \u2014 extended \u2014 <cite existing .' + fileExt + ' path>',
     ].join('\n');
     exitBlock(cfg, {
         ts: new Date().toISOString(),
@@ -344,7 +350,7 @@ const modeBSatisfied = isAlreadyInFamily(cfg, sessionId, filePath);
 // --- requireCitationOnExtended --------------------------------------------
 
 if (decision === 'extended' && cfg.validation.requireCitationOnExtended && !modeBSatisfied) {
-    const resolved = citationPathResolves(reason);
+    const resolved = citationPathResolves(reason, cfg.blocking.fileExtensions);
     if (!resolved) {
         exitBlock(cfg, {
             ts: new Date().toISOString(),
@@ -360,11 +366,11 @@ if (decision === 'extended' && cfg.validation.requireCitationOnExtended && !mode
             'Pattern: ' + (patternName || '(unspecified)'),
             'Reason: "' + reason + '"',
             '',
-            'Required: reason must include a .ts/.tsx path that resolves on disk.',
+            'Required: reason must include a .' + fileExt + ' path that resolves on disk.',
             '',
             'Suggest preamble:',
             '  Pattern check: ' + (patternName || '<Pattern>') +
-                ' (Tier <N>) \u2014 extended \u2014 mirrors <existing>.ts via <path/to/base>.ts',
+                ' (Tier <N>) \u2014 extended \u2014 mirrors <existing>.' + fileExt + ' via <path/to/base>.' + fileExt,
             '',
             'Config toggle: `validation.requireCitationOnExtended` in pattern-check.config.json.',
         ].join('\n'));
@@ -414,7 +420,7 @@ if (decision === 'refactor-suggest') {
     const needsArrow = cfg.validation.requireArrowOnRefactorSuggest !== false;
     const minR = cfg.validation.refactorSuggestMinReasonLength || 40;
     const arrowOk = !needsArrow || /\u2192/.test(reason) || /refactor-candidate/i.test(reason) || /\u2192/.test(patternName);
-    const resolved = citationPathResolves(reason);
+    const resolved = citationPathResolves(reason, cfg.blocking.fileExtensions);
     if (!arrowOk || reason.length < minR || !resolved) {
         exitBlock(cfg, {
             ts: new Date().toISOString(),
@@ -446,7 +452,7 @@ if (decision === 'refactor-suggest') {
 // --- I5: caller-count warn on isolated rejects ----------------------------
 
 if (decision === 'rejected' && cfg.validation.callerCountWarn && /isolated|no-siblings/.test(reason)) {
-    const names = exportedSymbolNames(payload.newText);
+    const names = exportedSymbolNames(payload.newText, langId);
     const candidate = names[0];
     if (candidate) {
         const count = callerCount(candidate, cfg, filePath);

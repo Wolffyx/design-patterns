@@ -10,18 +10,21 @@ description: >
   prototype, singleton, adapter, bridge, composite, decorator, facade,
   flyweight, proxy, chain of responsibility, command, iterator, mediator,
   memento, observer, state, strategy, template method, visitor, creational,
-  structural, behavioral. Sourced from refactoring.guru/design-patterns/typescript.
-  Tier 1 (3-star) must be considered first: Factory Method, Abstract Factory,
-  Builder, Singleton, Adapter, Facade, Strategy, Observer, Iterator, Template
-  Method. Per-pattern TypeScript references in references/.
+  structural, behavioral, python, java, c#, csharp, go, golang, c++, cpp, rust.
+  Enforced on TypeScript, Python, Java, C#, Go, C++, and Rust source files.
+  Sourced from refactoring.guru. Tier 1 (3-star) must be considered first:
+  Factory Method, Abstract Factory, Builder, Singleton, Adapter, Facade,
+  Strategy, Observer, Iterator, Template Method. Per-pattern references with
+  code in TypeScript, Python, Java, C#, Go, C++, and Rust in references/.
 ---
 
 # Design Patterns Skill
 
 Canonical GoF catalog. 22 patterns, 3 tiers by popularity. Every Write/Edit
-on a `.ts`/`.tsx` source file with substantive new logic must trigger a
-*Pattern check* — **even bug fixes, new functions, and refactors that don't
-declare a class**. Most answer `no GoF pattern — rejected`; that is correct.
+on a source file — TypeScript, Python, Java, C#, Go, C++, or Rust — with
+substantive new logic must trigger a *Pattern check* — **even bug fixes, new
+functions, and refactors that don't declare a class**. Most answer `no GoF
+pattern — rejected`; that is correct.
 
 ---
 
@@ -52,9 +55,32 @@ Pattern check: <PatternName> (Tier <N>) — extended — <cite existing project 
 
 No silent class creation. No silent interface design. Always declare intent.
 
+---
+
+## 1.5 Multi-language coverage
+
+The enforcement hooks detect substantive symbols in **TypeScript, Python,
+Java, C#, Go, C++, and Rust**. The *Pattern check* line is identical across
+languages; only the trigger syntax and the skip-comment token differ:
+
+| Language   | "New type" trigger                                          | Skip token |
+|------------|------------------------------------------------------------|------------|
+| TypeScript | class / interface / abstract / exported fn or arrow-const  | `//`       |
+| Python     | class / Protocol·ABC / `@abstractmethod` / top-level `def` | `#`        |
+| Java       | class / interface / record / enum / abstract               | `//`       |
+| C#         | class / interface / record / struct / abstract             | `//`       |
+| Go         | `type … struct` / `type … interface` / exported `func`     | `//`       |
+| C++        | class / struct / pure-virtual (`… = 0;`)                    | `//`       |
+| Rust       | struct / enum / trait / `pub fn`                            | `//`       |
+
+Each pattern's `references/<slug>.md` carries the canonical example in every
+supported language — read the block for the language you are editing. Adding a
+language is one entry in `hooks/_languages.js`.
+
 **Bypass** for mechanical codemods / bulk renames: add
-`// pattern-check: skip <reason>` to the file payload (not a replacement for
-the preamble on substantive edits).
+`// pattern-check: skip <reason>` (or `# pattern-check: skip <reason>` in
+Python) to the file payload — not a replacement for the preamble on
+substantive edits.
 
 ---
 
