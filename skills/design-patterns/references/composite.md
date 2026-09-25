@@ -37,6 +37,21 @@ structures as if they were individual objects.
 - Leaves and composites have nothing meaningful in common → forcing a shared interface hurts clarity
 - A simple recursive function over a plain object tree would suffice
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a recursive type `type Node = Leaf | { children: Node[] }` + one recursive function |
+| Python | nested dataclasses with a `children` list + a recursive function |
+| Java | a sealed interface + records + one recursive method |
+| C# | records + recursion with pattern matching |
+| Go | a struct with `Children []*Node` |
+| C++ | `std::variant` nodes with `std::vector` children + a recursive visit |
+| Rust | `enum Node { Leaf(..), Branch(Vec<Node>) }` + a recursive `match` |
+
 ## TypeScript Example
 
 ```typescript

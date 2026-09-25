@@ -39,6 +39,21 @@ classes.
 - The object has a constructor you can call → just call it
 - Objects are immutable → no need to clone
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | `structuredClone(obj)` or spread `{ ...obj, changed }` |
+| Python | `copy.copy` / `copy.deepcopy`, or `dataclasses.replace` |
+| Java | a copy constructor or a `withX(...)` method on a record; avoid `Cloneable` |
+| C# | a record `with` expression |
+| Go | plain value copy `b := a` (deep-copy slices and maps by hand) |
+| C++ | the copy constructor; a virtual `clone()` only for polymorphic copies |
+| Rust | `#[derive(Clone)]` |
+
 ## TypeScript Example
 
 ```typescript

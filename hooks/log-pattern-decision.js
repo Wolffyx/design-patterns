@@ -2,7 +2,7 @@
 /**
  * PostToolUse hook: logs Pattern check decisions for later review.
  *
- * On each Write/Edit/MultiEdit of a .ts/.tsx source file, scans the most
+ * On each Write/Edit/MultiEdit of a supported source file, scans the most
  * recent assistant transcript turn for `Pattern check:` lines and appends
  * one JSONL entry per line to `.claude/pattern-decision-log.jsonl`.
  *

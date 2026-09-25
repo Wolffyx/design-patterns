@@ -36,6 +36,21 @@ separate hierarchies—abstraction and implementation—which can be developed i
 - The class isn't actually big → premature
 - Adapter already solves your interop problem → don't add a second hierarchy
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | inject the implementation object in the constructor — it's composition + an interface |
+| Python | pass the implementation (or a callable) as a constructor argument |
+| Java | an interface field injected through the constructor |
+| C# | an interface injected through the constructor / DI |
+| Go | a struct field of interface type |
+| C++ | pimpl, or a template parameter (static bridge) |
+| Rust | a generic `struct Shape<R: Renderer>` or a `Box<dyn Renderer>` field |
+
 ## TypeScript Example
 
 ```typescript

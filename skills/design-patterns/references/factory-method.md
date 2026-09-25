@@ -40,6 +40,21 @@ allows subclasses to alter the type of objects that will be created.
 - The "factory" would be a one-liner that returns `new Foo()` with no logic → premature
 - The codebase already has a factory for this domain → extend it, do not create a parallel one
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a plain function `(kind) => Product`, or a `Record<Kind, () => Product>` map — no Creator subclass |
+| Python | a dict of callables, or `@classmethod` alternate constructors (`from_json`) |
+| Java | static factory methods (`of`, `from`), a `Map<Kind, Supplier<T>>`, or a sealed interface + `switch` |
+| C# | a static `Create(...)` method or a `Dictionary<Kind, Func<T>>` |
+| Go | `NewX(...)` constructor funcs, or `map[string]func() X` |
+| C++ | a free function returning `std::unique_ptr<Base>`, or a map of `std::function` |
+| Rust | `fn new()` / `From` / `TryFrom` impls, or an enum + `match` |
+
 ## TypeScript Example
 
 ```typescript

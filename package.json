@@ -1,7 +1,7 @@
 {
   "name": "design-patterns",
   "version": "1.0.0",
-  "description": "Gang of Four design-pattern catalog plus Pattern Check (Rule 0) hook enforcement for Claude Code.",
+  "description": "Control-flow rules, Tier 0 forms and the Gang of Four design-pattern catalog, plus Pattern Check (Rule 0) hook enforcement for Claude Code.",
   "license": "MIT",
   "engines": { "node": ">=18" },
   "scripts": {

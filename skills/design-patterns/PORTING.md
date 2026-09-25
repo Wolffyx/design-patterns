@@ -4,11 +4,11 @@ The design-patterns skill + pattern-review skill + per-edit hooks are
 project-neutral. All project-specific content lives in **three files outside
 the skills and hooks directories**:
 
-1. `.claude/design-patterns-project-usage.md` \u2014 your project's pattern
+1. `.claude/design-patterns-project-usage.md` — your project's pattern
    families, per-pattern guidance, extend-first table
-2. `.claude/pattern-check.config.json` \u2014 per-path rules, forbidden imports,
+2. `.claude/pattern-check.config.json` — per-path rules, forbidden imports,
    guarded paths, thresholds
-3. `CLAUDE.md` (project root) \u2014 Rule 0 preamble and enforcement-pipeline
+3. `CLAUDE.md` (project root) — Rule 0 preamble and enforcement-pipeline
    section
 
 Follow these steps to port the system to a new project.
@@ -17,16 +17,22 @@ Follow these steps to port the system to a new project.
 
 ## Step 1. Copy the portable pieces
 
-Copy these directories and files **as-is** \u2014 no edits needed:
+Copy these directories and files **as-is** — no edits needed:
 
 ```
-.claude/skills/design-patterns/       # GoF catalog + 22 per-pattern references
+.claude/skills/design-patterns/       # rules, Tier 0 + GoF catalog, per-pattern references
 .claude/skills/pattern-review/        # on-demand cross-file audit skill
 .claude/hooks/check-pattern-preamble.js
 .claude/hooks/pattern-smell-detector.js
 .claude/hooks/log-pattern-decision.js
 .claude/hooks/session-start-reminder.js
 .claude/hooks/user-prompt-reminder.js
+.claude/hooks/pattern-context-prep.js
+.claude/hooks/analyze-log.js
+.claude/hooks/_languages.js            # shared helper modules (required by the hooks)
+.claude/hooks/_pattern-shared.js
+.claude/hooks/_smell-corpus.js
+.claude/hooks/_control-flow-smells.js
 ```
 
 ## Step 2. Create the project-usage doc
@@ -34,21 +40,21 @@ Copy these directories and files **as-is** \u2014 no edits needed:
 Create `.claude/design-patterns-project-usage.md` in the new project. Use the
 template in the next section as a starting point. This is where you document:
 
-- **Existing project usage** table \u2014 what patterns are already in the code
+- **Existing project usage** table — what patterns are already in the code
   and where their canonical implementations live (e.g. `IYourKernel` at
   `packages/<your-package>/src/interfaces/IYourKernel.ts`). Guides "extend"
   decisions.
-- **Refactor-opportunity checklist** \u2014 questions the agent asks before
+- **Refactor-opportunity checklist** — questions the agent asks before
   emitting a Pattern check preamble on edits to existing code.
-- **Per-pattern project usage** \u2014 for each GoF pattern in the catalog, a
+- **Per-pattern project usage** — for each GoF pattern in the catalog, a
   note on whether and how it applies here.
-- **Plan-workflow rule** \u2014 project-specific rules for plans (e.g. must cite
+- **Plan-workflow rule** — project-specific rules for plans (e.g. must cite
   existing class when extending).
 
 ### Minimal template
 
 ```markdown
-# Design Patterns \u2014 <ProjectName>-Specific Usage
+# Design Patterns — <ProjectName>-Specific Usage
 
 Project-specific guidance for applying the GoF patterns from the
 `design-patterns` skill inside this repo.
@@ -85,7 +91,7 @@ Extend these. Do NOT introduce parallel implementations.
 
 If you're porting from this repo, the CadProject version of
 `design-patterns-project-usage.md` is a concrete example showing how to fill
-in each section for a real project \u2014 treat it as a reference, not a template
+in each section for a real project — treat it as a reference, not a template
 to copy.
 
 ## Step 3. Configure project-specific rules
@@ -129,25 +135,25 @@ Edit `.claude/pattern-check.config.json`:
 Paste this section near the top of your `CLAUDE.md`:
 
 ```markdown
-## Rule 0 \u2014 Pattern Check (mandatory preamble)
+## Rule 0 — Pattern Check (mandatory preamble)
 
 Before ANY tool call that writes or edits a source file (TypeScript, Python,
 Java, C#, Go, C++, Rust) with
-**substantive new logic** \u2014 a new `class`, `interface`, `abstract` class,
+**substantive new logic** — a new `class`, `interface`, `abstract` class,
 new exported `function`, new exported arrow-const, a brand-new file, or a
-diff large enough to imply structural change \u2014 emit ONE line first.
+diff large enough to imply structural change — emit ONE line first.
 
 **Default form** (most bug fixes / small edits answer this way):
 
-    Pattern check: no GoF pattern (-) \u2014 rejected \u2014 <reason \u226520 chars>.
+    Pattern check: no GoF pattern (-) — rejected — <reason ≥20 chars>.
 
 **Only when a pattern genuinely fits:**
 
-    Pattern check: <PatternName> (Tier <N>) \u2014 applied \u2014 <reason \u226520 chars>.
-    Pattern check: <PatternName> (Tier <N>) \u2014 extended \u2014 <cite existing project class>.
+    Pattern check: <PatternName> (Tier <N>) — applied — <reason ≥20 chars>.
+    Pattern check: <PatternName> (Tier <N>) — extended — <cite existing project class>.
 
 - `<decision>`: `applied` | `extended` | `rejected`
-- `<reason>`: \u2265 20 chars (vague one-word reasons are rejected by the hook)
+- `<reason>`: ≥ 20 chars (vague one-word reasons are rejected by the hook)
 
 **Bypass** for mechanical codemods / bulk renames: add
 `// pattern-check: skip <reason>` to the file payload.
@@ -163,7 +169,7 @@ diff large enough to imply structural change \u2014 emit ONE line first.
 | Layer | Hook | Behavior |
 |-------|------|----------|
 | 1 | `.claude/hooks/check-pattern-preamble.js` (PreToolUse) | **Blocks** on substantive triggers if no preamble |
-| 2 | `.claude/hooks/pattern-smell-detector.js` (PostToolUse) | **Non-blocking** \u2014 scans the post-edit file for pattern-candidate smells |
+| 2 | `.claude/hooks/pattern-smell-detector.js` (PostToolUse) | **Non-blocking** — scans the post-edit file for pattern-candidate smells |
 | 3 | `/pattern-review` skill (on-demand) | Cross-file analysis, hot-spot detection, missed-extension check |
 | 4 | `.claude/hooks/log-pattern-decision.js` (PostToolUse) | Appends every Pattern check line to `.claude/pattern-decision-log.jsonl` |
 
@@ -225,7 +231,7 @@ echo "exit: $?"
 Expect exit code 2 and a block message. Then add a preamble:
 
 ```bash
-echo '{"tool_name":"Write","tool_input":{"file_path":"src/test.ts","content":"// Pattern check: no GoF pattern (-) \u2014 rejected \u2014 single-use bootstrap class, no expected extension.\nexport class Foo {}"}}' | \
+echo '{"tool_name":"Write","tool_input":{"file_path":"src/test.ts","content":"// Pattern check: no GoF pattern (-) — rejected — single-use bootstrap class, no expected extension.\nexport class Foo {}"}}' | \
   node .claude/hooks/check-pattern-preamble.js
 echo "exit: $?"
 ```
@@ -242,14 +248,14 @@ Expect exit code 0.
 - `.claude/hooks/*.js` (read config; hardcode nothing about the project)
 
 **Per-project (always edit):**
-- `.claude/design-patterns-project-usage.md` \u2014 the CAD-specific content in
+- `.claude/design-patterns-project-usage.md` — the CAD-specific content in
   the CadProject version is an example; rewrite for your project
-- `.claude/pattern-check.config.json` \u2014 glob rules, forbidden imports,
+- `.claude/pattern-check.config.json` — glob rules, forbidden imports,
   guarded paths, route-through hint
-- `CLAUDE.md` \u2014 add the Rule 0 section shown above; the rest is yours
+- `CLAUDE.md` — add the Rule 0 section shown above; the rest is yours
 
 **Project-neutral default:** if you don't create
 `pattern-check.config.json`, the hooks fall back to sensible generic
 defaults (no per-path rules, no boundary check, standard smell thresholds).
-The system still works \u2014 it just won't flag project-specific boundary
+The system still works — it just won't flag project-specific boundary
 violations or treat any path as strict/lite.

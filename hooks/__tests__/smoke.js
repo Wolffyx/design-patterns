@@ -369,6 +369,148 @@ class Sup {
     assert(!r.stderr.includes('Singleton'), `singleton should be suppressed; got: ${r.stderr}`);
 });
 
+// --- control-flow smells --------------------------------------------------
+
+function smells(relPath, content, toolInput) {
+    const f = writeFile(relPath, content);
+    return run('pattern-smell-detector.js', {
+        tool_name: toolInput ? 'Edit' : 'Write',
+        tool_input: { file_path: f, ...(toolInput || {}) },
+    }).stderr;
+}
+
+check('nested-if (TS) — ignores braces in strings/comments', () => {
+    const err = smells('src/cf-nested.ts', `
+// if (a) { if (b) { } }
+export function f(o: any) {
+  const s = "if (x) { if (y) {";
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+}
+`);
+    assert(err.includes('cf-nested.ts:6 `if` nested in `if`'), `expected nested-if at line 6; got: ${err}`);
+    assert((err.match(/nested in/g) || []).length === 1, `expected exactly one nested-if; got: ${err}`);
+});
+
+check('deep-nesting (Python) — `with` is transparent, not counted', () => {
+    const err = smells('src/cf_deep.py', `
+def f(ids):
+    for i in ids:
+        if i:
+            with open(i) as fh:
+                if fh:
+                    pass
+`);
+    assert(err.includes('nesting depth 3 (max 2)'), `expected depth 3; got: ${err}`);
+});
+
+check('else-after-return (Go) + one finding per else-if chain (TS)', () => {
+    const go = smells('src/cf_else.go', `
+package x
+func F(err error) error {
+	if err != nil {
+		return err
+	} else {
+		return nil
+	}
+}
+`);
+    assert(go.includes('`else` after `return`'), `expected Go finding; got: ${go}`);
+    const ts = smells('src/cf-chain.ts', `
+export function g(k: string) {
+  if (k === "a") {
+    return 1;
+  } else if (k === "b") {
+    return 2;
+  } else if (k === "c") {
+    return 3;
+  } else {
+    return 4;
+  }
+}
+`);
+    assert((ts.match(/after `return`/g) || []).length === 1, `expected one chain finding; got: ${ts}`);
+    assert(ts.includes('ladder on `k` (3 branches)'), `expected ladder; got: ${ts}`);
+});
+
+check('python for-else after break is not else-after-return', () => {
+    const err = smells('src/cf_forelse.py', `
+def f(xs):
+    for x in xs:
+        if x:
+            break
+    else:
+        done()
+`);
+    assert(!err.includes('after `break`'), `for-else must not flag; got: ${err}`);
+});
+
+check('scattered-discriminator (Python)', () => {
+    const err = smells('src/cf_scatter.py', `
+def a(o):
+    if o.status == "new":
+        pass
+def b(o):
+    if o.status == "paid":
+        pass
+def c(o):
+    if o.status == "shipped":
+        pass
+`);
+    assert(err.includes('`o.status` compared to literals at 3 sites'), `expected scattered; got: ${err}`);
+});
+
+check('n-plus-one: loop, forEach, comprehension; zero-arg execute() ignored', () => {
+    const ts = smells('src/cf-n1.ts', `
+export async function f(ids: string[], cmds: any[]) {
+  for (const id of ids) {
+    await repo.findById(id);
+  }
+  ids.forEach(id => db.query("select 1", [id]));
+  cmds.forEach(c => c.execute());
+}
+`);
+    assert(ts.includes('`.findById(` inside loop'), `expected findById; got: ${ts}`);
+    assert(ts.includes('`.query(` inside loop'), `expected query in forEach; got: ${ts}`);
+    assert(!ts.includes('execute'), `Command.execute() must not flag; got: ${ts}`);
+    const py = smells('src/cf_n1.py', `
+def f(urls):
+    return [requests.get(u) for u in urls]
+`);
+    assert(py.includes('`requests.get(` inside loop'), `expected comprehension N+1; got: ${py}`);
+});
+
+check('switch-on-type skips switch marked exhaustive', () => {
+    const err = smells('src/cf-exh.ts', `
+function run(n: any) {
+  switch (n.kind) {
+    case "a": return 1;
+    case "b": return 2;
+    case "c": return 3;
+    case "d": return 4;
+    default: return assertNever(n.kind);
+  }
+}
+`);
+    assert(!err.includes('switch-on-type'), `exhaustive switch must not flag; got: ${err}`);
+});
+
+check('control-flow smells scoped to edited lines on Edit', () => {
+    const body = `
+export function f(o: any) {
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+  const y = 1;
+}
+`;
+    const err = smells('src/cf-scope.ts', body, { old_string: 'const y = 2;', new_string: 'const y = 1;' });
+    assert(!err.includes('nested in'), `untouched nested-if must not flag on Edit; got: ${err}`);
+    const err2 = smells('src/cf-scope.ts', body, { old_string: 'x', new_string: '    if (o.b) { go(); }' });
+    assert(err2.includes('nested in'), `edited nested-if must flag; got: ${err2}`);
+});
+
 check('non-ts file is ignored', () => {
     const f = writeFile('src/x.txt', 'whatever');
     const r = run('pattern-smell-detector.js', {
@@ -433,6 +575,24 @@ check('runs without error on Write payload', () => {
         },
     });
     assert(r.status === 0, `exit 0; got ${r.status}, stderr=${r.stderr}`);
+});
+
+check('lists same-language snake_case siblings, skips tests and other languages', () => {
+    writeFile('src/pay/base.py', 'class BaseAdapter:\n    pass\n');
+    writeFile('src/pay/stripe_adapter.py', 'class StripeAdapter(BaseAdapter):\n    pass\n');
+    writeFile('src/pay/test_stripe_adapter.py', 'x = 1\n');
+    writeFile('src/pay/other_adapter.ts', 'export class OtherAdapter {}\n');
+    const r = run('pattern-context-prep.js', {
+        session_id: 'smoke',
+        tool_name: 'Write',
+        tool_input: {
+            file_path: path.join(SANDBOX, 'src/pay/paypal_adapter.py'),
+            content: 'class PaypalAdapter(BaseAdapter):\n    def pay(self):\n        pass\n',
+        },
+    });
+    assert(r.stderr.includes('stripe_adapter.py'), `expected snake_case sibling; got: ${r.stderr}`);
+    assert(!r.stderr.includes('test_stripe_adapter.py'), `test file must be excluded; got: ${r.stderr}`);
+    assert(!r.stderr.includes('other_adapter.ts'), `other-language file must be excluded; got: ${r.stderr}`);
 });
 
 // ------------------------------------------------------------------

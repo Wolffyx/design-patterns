@@ -86,11 +86,17 @@ function matchFamily(filePath, cfg) {
 
 function listSiblings(filePath, cfg) {
     const cap = cfg.contextPrep.maxSiblings || 6;
-    const nameRe = new RegExp(cfg.contextPrep.siblingNameRegex || '.');
+    // case-insensitive: snake_case languages name files stripe_adapter.py / base.go
+    const nameRe = new RegExp(cfg.contextPrep.siblingNameRegex || '.', 'i');
     const dir = path.dirname(filePath);
     const parent = path.dirname(dir);
     const dirs = [dir];
     if ((cfg.contextPrep.globDepth || 1) >= 1 && parent && parent !== dir) dirs.push(parent);
+
+    // siblings share the edited file's language (a .py edit never lists .ts files)
+    const lang = shared.langs.get(shared.langIdForFile(filePath) || 'ts');
+    const extRe = new RegExp('\\.(?:' + lang.exts.join('|').replace(/\+/g, '\\+') + ')$', 'i');
+    const excludes = lang.excludeGlobs || [];
 
     const out = [];
     for (const d of dirs) {
@@ -99,9 +105,9 @@ function listSiblings(filePath, cfg) {
         try { entries = fs.readdirSync(d); } catch { continue; }
         for (const name of entries) {
             if (out.length >= cap) break;
-            if (!/\.(ts|tsx)$/.test(name)) continue;
-            if (/\.(test|spec|d)\.(ts|tsx)$/.test(name)) continue;
+            if (!extRe.test(name)) continue;
             const full = path.join(d, name);
+            if (excludes.some(g => shared.matchesGlob(full, g))) continue;
             if (path.resolve(full) === path.resolve(filePath)) continue;
             let stat;
             try { stat = fs.statSync(full); } catch { continue; }

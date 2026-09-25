@@ -29,8 +29,20 @@ Required reads on first class/interface/refactor per session:
 2. `.claude/design-patterns-project-usage.md`
 3. `.claude/skills/design-patterns/references/<slug>.md`
 
-Tier 1 (prefer first): Factory Method, Abstract Factory, Builder,
-Singleton, Adapter, Facade, Strategy, Observer, Iterator, Template Method.
+**Control flow (every edit, `references/control-flow.md`):**
+
+- No nested `if`: guard clauses / early return. Control-flow depth ≤ 2. No
+  `else` after `return` / `throw` / `continue` / `break`.
+- **N+1 branches:** a 3rd branch on the same key → dispatch map; branches
+  with several operations or state → Strategy / State. The same discriminator
+  checked at a 3rd site → centralize it.
+- **N+1 queries:** no DB / HTTP call per loop item → batch (`IN`), eager
+  load, DataLoader, or concurrent awaits.
+
+Tier 0 first (guard clause, dispatch map, null object, result type,
+repository, DI, language-native forms). Then Tier 1: Factory Method, Abstract
+Factory, Builder, Adapter, Facade, Strategy, Observer, Iterator, Template
+Method. Singleton is Tier 1 but rejected by default.
 
 **Anti-overuse rule:** bug fixes, <50-line code with one caller, or code the
 repo already solves — answer `no GoF pattern`. Most edits are this.

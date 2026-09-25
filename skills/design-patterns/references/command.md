@@ -39,6 +39,21 @@ reversible operations.
 - The action has no state and never needs to be reified → use a function reference
 - You'd be wrapping every UI event in a command class → too granular
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | closures `() => void` in a queue; `{ do, undo }` object literals |
+| Python | callables or `functools.partial` |
+| Java | a `Runnable` / lambda; a record for data-carrying commands |
+| C# | `Action` / `Func` delegates; records for data-carrying commands |
+| Go | `func()` values; a struct with `Do` / `Undo` func fields |
+| C++ | `std::function<void()>` |
+| Rust | `Box<dyn FnOnce()>`, or an enum of commands + `match` (serializable) |
+
 ## TypeScript Example
 
 ```typescript

@@ -75,6 +75,17 @@
     "repeatedNewMinOccurrences": 3,
     "constructorMaxParams": 5,
     "godClassMinPublicMethods": 8,
+    "maxNestingDepth": 2,
+    "nestedIf": true,
+    "elseAfterReturn": true,
+    "conditionalLadderMinBranches": 3,
+    "scatteredDiscriminatorMinSites": 3,
+    "controlFlowScope": "edited",
+    "nPlusOne": {
+      "enabled": true,
+      "flagAwaitInLoop": true,
+      "extraCallPatterns": []
+    },
     "boundaryViolationPaths": {
       "guardedPath": "",
       "forbiddenImports": [],

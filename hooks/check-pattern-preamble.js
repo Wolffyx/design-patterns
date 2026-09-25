@@ -3,7 +3,8 @@
  * PreToolUse hook: enforces the Pattern Check preamble (CLAUDE.md Rule 0).
  *
  * Scope:
- *   Any Write/Edit/MultiEdit on a .ts/.tsx source file that adds substantive
+ *   Any Write/Edit/MultiEdit on a supported source file (TS, Python, Java, C#,
+ *   Go, C++, Rust — see _languages.js) that adds substantive
  *   new logic — a new class, interface, abstract class, exported function,
  *   exported arrow-const, a brand-new file, or a diff large enough to imply
  *   structural change (> diffLineThreshold non-whitespace lines).
@@ -25,7 +26,7 @@
  *   - caller-count warn (I5): reason says `isolated` but grep finds callers
  *
  * Bypass paths:
- *   - Test files (*.test.ts, *.spec.ts), type files (*.types.ts), .d.ts
+ *   - Test / generated files (per-language excludeGlobs in _languages.js)
  *   - Payload contains `// pattern-check: skip <reason>` escape hatch
  *   - Whitespace-only diff (rename, formatter run)
  *   - Small edit (< smallEditThreshold lines) with no new exported symbol
@@ -434,7 +435,7 @@ if (decision === 'refactor-suggest') {
             '',
             'Required form:',
             '  Pattern check: <Current>\u2192<Better> (Tier <N>) \u2014 refactor-suggest \u2014 ' +
-                '<what current does, what better would do, cited .ts path> (\u2265 ' + minR + ' chars)',
+                '<what current does, what better would do, cited .' + fileExt + ' path> (\u2265 ' + minR + ' chars)',
             '',
             'Checks: arrow \u2192 present = ' + arrowOk + ', reason \u2265 ' + minR + ' chars = ' +
                 (reason.length >= minR) + ', cited path resolves = ' + Boolean(resolved),
@@ -442,7 +443,7 @@ if (decision === 'refactor-suggest') {
             'Example:',
             '  Pattern check: Facade\u2192Facade+Strategy (Tier 1) \u2014 refactor-suggest \u2014 ' +
                 'current facade has 12 methods (god-class risk); splitting by action-type Strategy keyed on ' +
-                '<path/to/file>.ts would isolate dispatch.',
+                '<path/to/file>.' + fileExt + ' would isolate dispatch.',
         ].join('\n'));
     }
     // non-blocking echo so the user sees the suggestion live

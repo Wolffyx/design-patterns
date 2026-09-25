@@ -29,6 +29,9 @@ const DEFAULT_CONFIG = {
             'Adapter', 'Facade', 'Decorator', 'Composite', 'Proxy', 'Bridge', 'Flyweight',
             'Strategy', 'Observer', 'Iterator', 'Template Method', 'Command', 'State',
             'Chain of Responsibility', 'Mediator', 'Memento', 'Visitor',
+            // Tier 0 — see skills/design-patterns/references/extras.md + control-flow.md
+            'Guard Clause', 'Dispatch Map', 'Null Object', 'Result', 'Repository',
+            'Specification', 'Pipeline', 'Middleware', 'Dependency Injection',
             'no-pattern', 'no GoF pattern',
         ],
         decisions: ['applied', 'extended', 'rejected', 'refactor-suggest'],

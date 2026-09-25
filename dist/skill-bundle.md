@@ -8,23 +8,32 @@
 
 # Design Patterns Skill
 
-Canonical GoF catalog. 22 patterns, 3 tiers by popularity. Every Write/Edit
-on a `.ts`/`.tsx` source file with substantive new logic must trigger a
-*Pattern check* — **even bug fixes, new functions, and refactors that don't
-declare a class**. Most answer `no GoF pattern — rejected`; that is correct.
+Write code that is easy to change, test and read. Decide in this order:
+
+1. **Control flow** (§5): flat functions, guard clauses, no N+1s. Applies to
+   every edit.
+2. **Tier 0** (§7): what the language already gives you, like a function,
+   a map, an enum + `match`, or a Result type.
+3. **GoF patterns** (Tier 1 → 3): only when the problem matches one and
+   §3 does not reject it.
+
+Every Write/Edit on a source file (TypeScript, Python, Java, C#, Go, C++,
+Rust) with substantive new logic must carry a *Pattern check* line, **even
+bug fixes, new functions, and refactors that don't declare a class**. Most
+answer `no GoF pattern — rejected`, and that is correct.
 
 ---
 
 ## 1. Required output format (DO THIS EVERY TIME)
 
-**Default form** — emit this for most bug fixes, small edits, and
-single-caller code:
+**Default form.** Use it for most bug fixes, small edits, and single-caller
+code:
 
 ```
 Pattern check: no GoF pattern (-) — rejected — <reason ≥20 chars>.
 ```
 
-**Only when a pattern genuinely applies:**
+**Only when a pattern genuinely applies** (Tier 0 names from §7 are valid):
 
 ```
 Pattern check: <PatternName> (Tier <N>) — applied — <reason ≥20 chars>.
@@ -33,37 +42,71 @@ Pattern check: <PatternName> (Tier <N>) — extended — <cite existing project 
 
 - `<decision>` is one of `applied` (new pattern instance), `extended` (extends
   existing project pattern family per
-  `.claude/design-patterns-project-usage.md`), or `rejected` (anti-overuse —
-  inline code is correct here).
-- `<reason>` must be ≥ 20 chars. One-word reasons ("bug fix", "cleanup") are
-  rejected by the hook.
-- Legacy form `Pattern check: <Name> (Tier N) — <reason>` still works but the
-  structured form above is preferred (enables aggregation and typo catching).
+  `.claude/design-patterns-project-usage.md`), `rejected` (anti-overuse:
+  inline code is correct here), or `refactor-suggest` (see
+  `references/hook-protocol.md`).
+- `<reason>` must be ≥ 20 chars. The hook rejects one-word reasons such as
+  "bug fix" or "cleanup".
+- The legacy form `Pattern check: <Name> (Tier N) — <reason>` still works.
+  Prefer the structured form above: it enables aggregation and typo catching.
 
 No silent class creation. No silent interface design. Always declare intent.
 
-**Bypass** for mechanical codemods / bulk renames: add
-`// pattern-check: skip <reason>` to the file payload (not a replacement for
-the preamble on substantive edits).
+---
+
+## 2. Multi-language coverage
+
+The enforcement hooks detect substantive symbols in **TypeScript, Python,
+Java, C#, Go, C++, and Rust**. The *Pattern check* line is identical across
+languages. Only the trigger syntax and the skip-comment token differ:
+
+| Language   | "New type" trigger                                          | Skip token |
+|------------|------------------------------------------------------------|------------|
+| TypeScript | class / interface / abstract / exported fn or arrow-const  | `//`       |
+| Python     | class / Protocol·ABC / `@abstractmethod` / top-level `def` | `#`        |
+| Java       | class / interface / record / enum / abstract               | `//`       |
+| C#         | class / interface / record / struct / abstract             | `//`       |
+| Go         | `type … struct` / `type … interface` / exported `func`     | `//`       |
+| C++        | class / struct / pure-virtual (`… = 0;`)                    | `//`       |
+| Rust       | struct / enum / trait / `pub fn`                            | `//`       |
+
+Each pattern's `references/<slug>.md` has the canonical example in every
+supported language, plus a *Lighter idiomatic forms* table. Read the block
+for the language you are editing. Adding a language takes one entry in
+`hooks/_languages.js`.
+
+**Bypass** for mechanical codemods and bulk renames: add
+`// pattern-check: skip <reason>` (or `# pattern-check: skip <reason>` in
+Python) to the file payload. It does not replace the preamble on
+substantive edits.
 
 ---
 
-## 2. Anti-overuse rule (READ FIRST — overrides everything below)
+## 3. Anti-overuse rule (READ FIRST — overrides everything below)
 
-**Most edits answer `Pattern check: no GoF pattern — rejected — <reason>`. That
-is the right default.** The enforcement hook fires on every substantive edit,
-but firing ≠ a pattern is required. It means *the decision* is required.
+**Most edits answer `Pattern check: no GoF pattern — rejected — <reason>`.
+That is the right default.** The hook fires on every substantive edit because
+*the decision* is required, not because a pattern is.
 
-Patterns are tools, not goals. Do NOT introduce a pattern when:
+Patterns and SOLID exist to reduce complexity, not add it. Do NOT:
 
-- Code is <50 lines and has one caller → write inline
-- Only one concrete type, no realistic second on the horizon → just `new` (YAGNI)
-- Pattern adds more files than it saves (e.g. Visitor for 2 classes) → skip
-- The codebase already solves this differently → extend, don't fork
-- The change is a bug fix and the fix doesn't restructure anything → inline
+- add a pattern to code under 50 lines with one caller. Write it inline.
+- build for one concrete type with no realistic second. Call `new` (YAGNI).
+- use a pattern that adds more files than it saves (e.g. Visitor for 2 classes).
+- fork what the codebase already solves differently. Extend it.
+- restructure in a bug fix whose fix doesn't need it. Fix inline.
+- create an interface with one implementation and no concrete reason (a
+  real boundary, a second implementation that exists, a test seam you cannot
+  get otherwise).
+- create a wrapper class that only delegates.
+- make everything a `Service` / `Manager` / `Helper`.
+- introduce a factory for trivial construction.
+- abstract for hypothetical future requirements.
+- split five lines of coherent logic into five files.
+- apply a pattern ceremonially, to show it was considered.
 
 This rule overrides "always pick a Tier 1 pattern". Project ethos: three
-similar lines of code beats a premature abstraction.
+similar lines of code beat a premature abstraction.
 
 When the rule applies, emit:
 
@@ -77,195 +120,188 @@ no structural change"). Vague reasons like "bug fix" are rejected.
 
 ---
 
-## 3. How to use this skill
+## 4. Principles
 
-1. Read this SKILL.md whenever starting design/coding work
-2. Run the decision tree in §5 to pick a candidate
-3. Apply the anti-overuse rule (§2). If it triggers, stop here
-4. Read `references/<slug>.md` for the chosen pattern (full intent, code, "Don't use when"). Cross-check project-specific guidance in `.claude/design-patterns-project-usage.md`
-5. Emit the *Pattern check* line (§1)
-6. Write the code, citing the pattern in code comments only when the pattern is non-obvious
+Apply these when they solve an actual design problem. Don't create classes or
+interfaces just to satisfy them.
+
+- **Single Responsibility.** One reason to change per module/class. Split
+  when two unrelated change requests would touch the same unit.
+- **Open/Closed.** When variants keep arriving, make adding one a new entry
+  (a map key, a class, a registered handler) instead of an edit to every
+  `switch`.
+- **Liskov Substitution.** A subtype must work wherever its base does. No
+  `throw NotSupported` overrides, no narrowed preconditions.
+- **Interface Segregation.** Small, role-shaped interfaces owned by the
+  caller, not one wide interface every implementer half-fills.
+- **Dependency Inversion / Injection.** Inject what varies or does I/O (DB,
+  HTTP, clock, randomness, filesystem, env). Don't inject pure helpers or
+  value objects. See `references/extras.md` → Dependency Injection.
+- **Composition over inheritance.** Use `extends` only for a true is-a with
+  shared invariants. Reuse behavior by holding a collaborator (Strategy,
+  Decorator), not by subclassing.
+- **Domain separate from infrastructure.** Business rules don't build SQL,
+  parse HTTP, or read env vars. Put those behind a boundary (Repository,
+  Adapter) at the edge.
+- **Testability.** If a unit test needs a real DB, network, or clock, a
+  dependency is hard-wired. Inject it at the seam. Don't mock internals.
 
 ---
 
-## 4. Pattern selection rule
+## 5. Control-flow rules (every edit)
 
-- **Try Tier 1 first** (10 patterns, 3 stars — well-known, high-leverage)
-- **Drop to Tier 2** only when no Tier 1 fits (5 patterns)
-- **Tier 3** needs explicit justification in the *Pattern check* reason (7 patterns)
+Full rules, before/after code in all seven languages, and ORM-specific N+1
+fixes are in `references/control-flow.md`. The smell detector checks these on
+the lines each edit touches.
+
+| # | Rule | Smell id |
+|---|---|---|
+| R1 | **No nested `if`.** Invert and exit early (guard clause), merge conditions, use `else if`, or extract a function. | `nested-if` |
+| R2 | **Max control-flow depth 2** (if / loop / switch / try) inside a function. Depth 3 means extract. | `deep-nesting` |
+| R3 | **No `else` after `return` / `throw` / `raise` / `continue` / `break`.** Drop the `else` and dedent. | `else-after-return` |
+| R4 | **N+1 branches.** A conditional that selects behavior climbs a ladder: ≤ 2 branches `if`/`else` → 3rd branch: **dispatch map** (or exhaustive `match` on a closed enum) → branches need multiple operations or state: **Strategy / State**. The same discriminator compared at a 3rd site: centralize it. Refactor *before* adding branch N+1. | `conditional-ladder`, `scattered-discriminator` |
+| R5 | **N+1 queries.** No DB / HTTP call per loop item. Batch (`IN`, bulk endpoint), eager-load relations, use a DataLoader, or run independent awaits concurrently. | `n-plus-one` |
+
+Compound conditions with more than 2 terms go into a named predicate
+(`isEligible(user)`). Repeated null checks call for optional chaining,
+`Option`, or a Null Object.
+
+Before adding an `if` / `else if` / `switch` branch, ask:
+
+1. Does each branch represent a different *behavior*?
+2. Will more variants likely be added?
+3. Is the same condition checked elsewhere?
+4. Would a dispatch map, polymorphic type, State, or Command make it clearer?
+
+Any "yes" → move up the R4 ladder instead of adding the branch.
 
 ---
 
-## 4.5 Default answer: `no GoF pattern`
+## 6. How to use this skill
 
-Before running the full decision tree, ask these three questions in order:
+1. Read this SKILL.md when starting design or coding work.
+2. Apply §5 to the code you are about to write, whatever the pattern answer.
+3. Apply the anti-overuse rule (§3). If it triggers, stop here and emit `rejected`.
+4. Pick a candidate: Tier 0 (§7) first, then the decision tree (§9).
+5. Read `references/<slug>.md` for the chosen pattern (intent, lighter forms,
+   code, "Don't use when"). Cross-check `.claude/design-patterns-project-usage.md`.
+6. Emit the *Pattern check* line (§1).
+7. Write the code. Name the pattern in a code comment only when it isn't obvious.
+
+---
+
+## 7. Pattern selection
+
+### Tiers
+
+- **Tier 0: language-native and non-GoF** (`references/extras.md`,
+  `references/control-flow.md`): Guard Clause, Dispatch Map, Null Object,
+  Result type, Repository, Specification, Pipeline / Middleware, Dependency
+  Injection. Also the *Lighter idiomatic forms* row of any GoF pattern
+  (pass a function instead of a Strategy class, a generator instead of an
+  Iterator class, a closed enum + `match` instead of a Visitor).
+- **Tier 1: 3-star GoF.** Factory Method, Abstract Factory, Builder,
+  Adapter, Facade, Strategy, Observer, Iterator, Template Method, and
+  Singleton, which is well known but **rejected by default**: prefer DI, a
+  module-level instance, or a container scope.
+- **Tier 2** only when no Tier 1 fits (5 patterns).
+- **Tier 3** needs explicit justification in the *Pattern check* reason (7 patterns).
+
+### Default answer: `no GoF pattern`
+
+Before running the decision tree, ask these three questions in order:
 
 1. **Is this a bug fix that does not restructure logic?** → `no GoF pattern`
 2. **Is the change < 50 lines with a single caller?** → `no GoF pattern`
 3. **Does the project codebase already solve this elsewhere** (per
-   `.claude/design-patterns-project-usage.md`)? → **extend** existing pattern;
-   use `decision: extended` and cite the class.
+   `.claude/design-patterns-project-usage.md`)? → **extend** the existing
+   pattern with `decision: extended` and cite the class.
 
-If all three are "no", continue to §5.
+If all three are "no", continue to §9.
 
----
+### The three line thresholds (they are different things)
 
-## 4.6 Cross-file preflight (when PATTERN-CONTEXT appears)
-
-The `pattern-context-prep.js` PreToolUse hook runs before the blocking
-preamble validator. On substantive edits it emits a `PATTERN-CONTEXT:`
-stderr block with candidate sibling paths, the matching project pattern
-family, recent decisions on this file, and imports already present. Three
-modes — the agent's response rules depend on which mode fired:
-
-### Mode A — full preflight
-
-```
-PATTERN-CONTEXT: advisory — read 1–3 siblings before Pattern check
-  triggered-by: new class, diff 62 lines
-  family-hint: src/<feature>/base.ts (Adapter + Strategy — example family)
-  siblings:
-    - src/<feature>/base.ts
-    - src/<feature>/impl-a.ts
-  recent-decisions-on-file:
-    - 2026-04-18 extended Adapter — "impl-b.ts mirrors impl-a.ts shape"
-  imports-in-payload:
-    - ../<feature>/base (looks like family extension)
-  action: Read 1–3 of the listed paths, then emit Pattern check citing one.
-END-PATTERN-CONTEXT
-```
-
-**Rule 1**: agent MUST Read 1–3 hinted paths (family-hint first, then
-siblings) before emitting `Pattern check:`. The preamble must either:
-
-- cite one of those paths in the reason (→ `applied` or `extended`), OR
-- explicitly say `scanned N siblings, no family match` plus an
-  anti-extended phrase (`isolated`, `no-siblings`, `unrelated domain`) to
-  justify `rejected`.
-
-### Mode B — already-in-family short-circuit
-
-```
-PATTERN-CONTEXT: already-in-family
-  family: Adapter + Strategy (example family) — via src/<feature>/base.ts
-  last-extend: 2026-04-18 — impl-a.ts shape
-  note: no re-read required; emit `Pattern check: <pattern> — extended —
-        continuing existing integration via <path>`.
-END-PATTERN-CONTEXT
-```
-
-**Rule 2**: NO sibling Read required. Emit `extended — continuing <family>
-via <cached-path>` directly. Saves tokens on routine edits to files already
-confirmed in a family. The citation/anti-extended validators are
-auto-satisfied by the session cache for this file.
-
-### Mode C — family-health: degraded
-
-Appears as an additional line inside a Mode A block when the decision log
-shows ≥3 `refactor-suggest` or `refactor-candidate` entries against the
-same family within the last 30 days.
-
-**Rule 3**: after Reading one of the hinted paths, if the existing family
-is misapplied or a better pattern fits, emit `refactor-suggest` with
-`<CurrentPattern>→<BetterPattern>` and a cited path. The current edit
-still proceeds minimally — the suggestion lands in the decision log as an
-`open` entry that `/pattern-review --backlog` surfaces.
-
-Required form for `refactor-suggest`:
-
-```
-Pattern check: Facade→Facade+Strategy (Tier 1) — refactor-suggest —
-  current facade has 12 methods (god-class risk); splitting by action-type
-  Strategy keyed on src/<feature>/dispatcher.ts would isolate dispatch.
-```
-
-Validator requirements: arrow `→` in pattern name, reason ≥ 40 chars,
-cite a real `.ts`/`.tsx` path.
-
-### Worked examples
-
-**Example A (Mode A → extended)**. PATTERN-CONTEXT lists
-`src/<feature>/base.ts` + siblings. Agent Reads `base.ts`, sees the
-`IPort` interface, emits:
-
-```
-Pattern check: Adapter (Tier 1) — extended — new impl-b.ts implements
-  IPort from src/<feature>/base.ts; mirrors impl-a.ts shape.
-```
-
-**Example B (Mode A → rejected after scan)**. PATTERN-CONTEXT lists three
-`*Handler.ts` siblings for a utility file. Agent Reads one, finds no
-shared base:
-
-```
-Pattern check: no GoF pattern (-) — rejected — scanned 3 siblings, no
-  family match; isolated 22-line helper for date parsing.
-```
-
-**Example C (Mode B → extended short)**. PATTERN-CONTEXT already-in-family:
-
-```
-Pattern check: Adapter (Tier 1) — extended — continuing existing
-  integration via src/<feature>/base.ts.
-```
-
-**Example D (Mode C → refactor-suggest)**. PATTERN-CONTEXT shows
-`family-health: degraded` on a 12-method facade:
-
-```
-Pattern check: Facade→Facade+Strategy (Tier 1) — refactor-suggest —
-  facade has 12 public methods (god-class); splitting verbs into
-  strategies keyed on action via src/<feature>/dispatcher.ts would
-  isolate dispatch.
-```
-
-### Anti-overuse rule still dominates
-
-§2 overrides this preflight. Do NOT emit `refactor-suggest` for <50-line
-single-caller code just because the hook offered siblings. The preflight
-gives you information; judgement stays yours.
+| Threshold | Owner | Meaning |
+|---|---|---|
+| `smallEditThreshold` (10) | hook | Edits under 10 changed lines with no new exported symbol **skip** the check entirely. |
+| `diffLineThreshold` (40) | hook | Diffs over 40 lines (or any new class / interface / exported fn) **require** a *Pattern check* line. |
+| < 50 lines, one caller | you | Judgement rule: such code **answers** `rejected`. The line is still required when the hook fires. |
 
 ---
 
-## 5. Decision tree
+## 8. Hook preflight (PATTERN-CONTEXT)
+
+When a `PATTERN-CONTEXT:` block appears in hook output, read
+`references/hook-protocol.md` before emitting the *Pattern check* line.
+Summary:
+
+- **Mode A** (advisory): Read 1–3 hinted sibling paths, then cite one
+  (`applied` / `extended`), or say `scanned N siblings, no family match` to
+  reject.
+- **Mode B** (already-in-family): no Read needed. Emit `extended — continuing
+  <family> via <path>`.
+- **Mode C** (family-health degraded): if the family is misapplied, emit
+  `refactor-suggest` as `<Current>→<Better>` with a reason ≥ 40 chars citing
+  a real path.
+
+§3 still dominates: the preflight gives you information, the judgement stays
+yours.
+
+---
+
+## 9. Decision tree
 
 ```
+Choosing behavior by a kind / type / status?          (control-flow R4)
+  ├─ ≤ 2 variants → if / else, guard clauses
+  ├─ 3+ variants, one operation each → Dispatch Map (Tier 0) / exhaustive match
+  ├─ Variants carry several operations or config → Strategy
+  ├─ Behavior changes as the object moves through states → State
+  └─ New operations over a fixed closed set of types → Visitor (or match per op)
+
 Need to create objects?
   ├─ One concrete type, no swap → just `new`, no pattern
-  ├─ Pick concrete type at runtime → Factory Method
+  ├─ Pick concrete type at runtime → Factory Method (or a map of constructors)
   ├─ Families of related types → Abstract Factory
-  ├─ Many constructor params / step-by-step build → Builder
-  ├─ Exactly one instance globally → Singleton (last resort — usually a registry)
-  └─ Cheap clone of an existing instance → Prototype
+  ├─ Many optional params / step-by-step build → Builder (or options object / named args)
+  ├─ Exactly one instance globally → Singleton (last resort — DI / module instance)
+  └─ Cheap clone of an existing instance → Prototype (or language clone / copy)
 
 Need to compose / wrap / bridge structures?
   ├─ Incompatible interfaces → Adapter
   ├─ Hide a complex subsystem → Facade
-  ├─ Add behavior without subclass explosion → Decorator
+  ├─ Add behavior without subclass explosion → Decorator (or higher-order fn)
   ├─ Tree of part-whole → Composite
   ├─ Lazy / access control / remote stand-in → Proxy
   ├─ Two independent dimensions of variation → Bridge
-  └─ Many small objects sharing intrinsic state → Flyweight
+  ├─ Many small objects sharing intrinsic state → Flyweight
+  └─ Persistence leaking into domain logic → Repository (Tier 0)
 
 Need objects to communicate?
-  ├─ Swap algorithms at runtime → Strategy
+  ├─ Swap algorithms at runtime → Strategy (or pass a function)
   ├─ Notify N listeners on event → Observer
-  ├─ Walk a collection without exposing internals → Iterator
+  ├─ Walk a collection without exposing internals → Iterator (or generator)
   ├─ Algorithm skeleton with overridable steps → Template Method
   ├─ Encapsulate request as object (queue / undo / log) → Command
-  ├─ Object behavior depends on internal state → State
-  ├─ Pass request through handler chain → Chain of Responsibility
+  ├─ Pass request through handler chain → Chain of Responsibility / Middleware
   ├─ Hub coordinating N peer objects → Mediator
   ├─ Snapshot for undo without exposing internals → Memento
   └─ Add operations to a class hierarchy without modifying it → Visitor
+
+Handling absence or failure?
+  ├─ Many call sites null-check the same collaborator → Null Object (Tier 0)
+  └─ Expected failure callers must branch on → Result type (Tier 0)
 ```
 
 ---
 
-## 6. Quick decision table
+## 10. Quick decision table
 
 | If you need...                            | Use                         |
 |-------------------------------------------|-----------------------------|
+| Flatten nested ifs                        | **Guard clauses** (Tier 0)  |
+| Pick behavior by key, 3+ variants         | **Dispatch Map** (Tier 0)   |
+| Load related rows for a list              | **Batch / eager load** (R5) |
 | Swap algorithms at runtime                | **Strategy**                |
 | Wrap an incompatible API                  | **Adapter**                 |
 | Hide a complex subsystem                  | **Facade**                  |
@@ -273,7 +309,6 @@ Need objects to communicate?
 | Notify N subscribers on event             | **Observer**                |
 | Walk a collection opaquely                | **Iterator**                |
 | Algorithm skeleton with overridable steps | **Template Method**         |
-| Single global instance                    | **Singleton** (last resort) |
 | Build complex object step-by-step         | **Builder**                 |
 | Families of related products              | **Abstract Factory**        |
 | Encapsulate a request (undo/queue/log)    | **Command**                 |
@@ -281,77 +316,94 @@ Need objects to communicate?
 | Tree of part-whole, treated uniformly     | **Composite**               |
 | Stack runtime behaviors on object         | **Decorator**               |
 | Pipeline of handlers                      | **Chain of Responsibility** |
+| Single global instance                    | **Singleton** (last resort) |
 
 ---
 
-## 7. Full 22-pattern catalog
+## 11. Full catalog
 
 | Tier  | Pattern                 | Category   | Pop | Reference                                                                      |
 |-------|-------------------------|------------|-----|--------------------------------------------------------------------------------|
-| **1** | Factory Method          | Creational | 3   | [references/factory-method.md](see "factory-method" section below)                   |
-| **1** | Abstract Factory        | Creational | 3   | [references/abstract-factory.md](see "abstract-factory" section below)               |
-| **1** | Builder                 | Creational | 3   | [references/builder.md](see "builder" section below)                                 |
-| **1** | Singleton               | Creational | 3   | [references/singleton.md](see "singleton" section below)                             |
-| **1** | Adapter                 | Structural | 3   | [references/adapter.md](see "adapter" section below)                                 |
-| **1** | Facade                  | Structural | 3   | [references/facade.md](see "facade" section below)                                   |
-| **1** | Strategy                | Behavioral | 3   | [references/strategy.md](see "strategy" section below)                               |
-| **1** | Observer                | Behavioral | 3   | [references/observer.md](see "observer" section below)                               |
-| **1** | Iterator                | Behavioral | 3   | [references/iterator.md](see "iterator" section below)                               |
-| **1** | Template Method         | Behavioral | 3   | [references/template-method.md](see "template-method" section below)                 |
-| **2** | Decorator               | Structural | 2   | [references/decorator.md](see "decorator" section below)                             |
-| **2** | Composite               | Structural | 2   | [references/composite.md](see "composite" section below)                             |
-| **2** | Command                 | Behavioral | 2   | [references/command.md](see "command" section below)                                 |
-| **2** | State                   | Behavioral | 2   | [references/state.md](see "state" section below)                                     |
-| **2** | Chain of Responsibility | Behavioral | 2   | [references/chain-of-responsibility.md](see "chain-of-responsibility" section below) |
-| **3** | Prototype               | Creational | 1   | [references/prototype.md](see "prototype" section below)                             |
-| **3** | Proxy                   | Structural | 1   | [references/proxy.md](see "proxy" section below)                                     |
-| **3** | Bridge                  | Structural | 1   | [references/bridge.md](see "bridge" section below)                                   |
-| **3** | Flyweight               | Structural | 1   | [references/flyweight.md](see "flyweight" section below)                             |
-| **3** | Mediator                | Behavioral | 1   | [references/mediator.md](see "mediator" section below)                               |
-| **3** | Memento                 | Behavioral | 1   | [references/memento.md](see "memento" section below)                                 |
-| **3** | Visitor                 | Behavioral | 1   | [references/visitor.md](see "visitor" section below)                                 |
+| **0** | Control-flow rules      | Rules      | –   | [references/control-flow.md](#control-flow)                       |
+| **0** | Null Object, Result, Repository, Specification, Middleware, DI | Non-GoF | – | [references/extras.md](#extras) |
+| **1** | Factory Method          | Creational | 3   | [references/factory-method.md](#factory-method)                   |
+| **1** | Abstract Factory        | Creational | 3   | [references/abstract-factory.md](#abstract-factory)               |
+| **1** | Builder                 | Creational | 3   | [references/builder.md](#builder)                                 |
+| **1** | Singleton (default: reject) | Creational | 3 | [references/singleton.md](#singleton)                           |
+| **1** | Adapter                 | Structural | 3   | [references/adapter.md](#adapter)                                 |
+| **1** | Facade                  | Structural | 3   | [references/facade.md](#facade)                                   |
+| **1** | Strategy                | Behavioral | 3   | [references/strategy.md](#strategy)                               |
+| **1** | Observer                | Behavioral | 3   | [references/observer.md](#observer)                               |
+| **1** | Iterator                | Behavioral | 3   | [references/iterator.md](#iterator)                               |
+| **1** | Template Method         | Behavioral | 3   | [references/template-method.md](#template-method)                 |
+| **2** | Decorator               | Structural | 2   | [references/decorator.md](#decorator)                             |
+| **2** | Composite               | Structural | 2   | [references/composite.md](#composite)                             |
+| **2** | Command                 | Behavioral | 2   | [references/command.md](#command)                                 |
+| **2** | State                   | Behavioral | 2   | [references/state.md](#state)                                     |
+| **2** | Chain of Responsibility | Behavioral | 2   | [references/chain-of-responsibility.md](#chain-of-responsibility) |
+| **3** | Prototype               | Creational | 1   | [references/prototype.md](#prototype)                             |
+| **3** | Proxy                   | Structural | 1   | [references/proxy.md](#proxy)                                     |
+| **3** | Bridge                  | Structural | 1   | [references/bridge.md](#bridge)                                   |
+| **3** | Flyweight               | Structural | 1   | [references/flyweight.md](#flyweight)                             |
+| **3** | Mediator                | Behavioral | 1   | [references/mediator.md](#mediator)                               |
+| **3** | Memento                 | Behavioral | 1   | [references/memento.md](#memento)                                 |
+| **3** | Visitor                 | Behavioral | 1   | [references/visitor.md](#visitor)                                 |
+
+Hook-only material: [references/hook-protocol.md](references/hook-protocol.md).
 
 ---
 
-## 8. Common pattern combinations
+## 12. Common pattern combinations
 
 | Combo                     | Use case                                                          |
 |---------------------------|-------------------------------------------------------------------|
 | Strategy + Factory Method | Pluggable algorithm where the factory picks the concrete strategy |
+| Dispatch Map + Strategy   | Map from key to strategy instance: registration without `switch`  |
 | Command + Memento         | Undo/redo                                                         |
 | Observer + Mediator       | Event bus where the mediator dispatches to observers              |
 | Composite + Iterator      | Tree walking                                                      |
 | Facade + Adapter          | Facade hiding multiple Adapters over different backends           |
+| Repository + Adapter      | Domain-shaped repository over a vendor SDK / ORM                  |
 | State + Strategy          | Strategy for the active behavior, State for switching strategies  |
 | Decorator + Strategy      | Stack decorators on top of a base strategy                        |
 
 ---
 
-## 9. Anti-patterns to avoid (companion catalog)
+## 13. Anti-patterns to avoid (companion catalog)
 
-- **God Object / God Class** — class doing >5 unrelated things → split by responsibility
-- **Anemic Domain Model** — data class with no behavior + service class with all logic → merge them
-- **Singleton abuse** — Singleton for state-passing convenience → use DI / Context / store slice
-- **Pattern soup** — stacking 3+ patterns to do one job (Adapter+Decorator+Strategy where Adapter alone fits)
-- **Premature Factory** — Factory for one concrete type → just call `new`
-- **Stringly-typed dispatch** — `if (type === 'foo')` chain → use Strategy or polymorphism
-- **Inheritance-for-reuse** — `extends` to grab methods → use composition / Strategy / Decorator
+- **Arrow code**: nested `if` pyramids, so the happy path drifts right →
+  guard clauses (§5 R1–R3)
+- **N+1 queries**: one query per loop item → batch / eager load (§5 R5)
+- **Shotgun conditionals**: the same `status ==` check in many places →
+  centralize via map / State / polymorphism (§5 R4)
+- **God Object / God Class**: a class doing >5 unrelated things → split by responsibility
+- **Anemic Domain Model**: data class with no behavior plus a service class
+  holding all its rules → move invariants and rules onto the type that owns the data
+- **Singleton abuse**: Singleton for state-passing convenience → use DI / context / a store slice
+- **Pattern soup**: stacking 3+ patterns to do one job (Adapter+Decorator+Strategy where Adapter alone fits)
+- **Premature Factory**: Factory for one concrete type → just call `new`
+- **Stringly-typed dispatch**: `if (type === 'foo')` chains → enum + dispatch map, Strategy, or polymorphism
+- **Inheritance-for-reuse**: `extends` to grab methods → composition / Strategy / Decorator
+- **Speculative interface**: interface with one implementation and no boundary → use the concrete class
 
 ---
 
-## 10. Plan workflow integration
+## 14. Plan workflow integration
 
 When the planning workflow runs (Plan agent, ExitPlanMode plans, design discussions):
 
-- **Every new abstraction in the plan must name its GoF pattern by reference**
+- **Every new abstraction in the plan must name its pattern by reference**
+  (Tier 0 names count)
 - The plan file must contain at least one *Pattern check:* line per new class/interface
 - The plan must justify each Tier 2 or Tier 3 choice in one line
+- Plans touching data access must say how lists of related records are
+  loaded (batch / eager), not just "fetch X for each Y"
 
 Plans without *Pattern check:* lines for new abstractions are incomplete.
 
 ---
 
-## 11. Memory non-pollution rule
+## 15. Memory non-pollution rule
 
 This skill's content lives in this skill, NOT in any user memory system. Do
 not save pattern definitions, examples, or star ratings to memory. Memory is
@@ -396,6 +448,21 @@ implementations.
 - You only need to create one product type → use Factory Method instead
 - The "families" only have one member each → flat Factory Method is enough
 - Variants will never be added → just instantiate concrete classes directly
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an object of factory functions per family: `{ button: () => …, checkbox: () => … }` |
+| Python | one module per family, or a dict of callables selected once at startup |
+| Java | a record of `Supplier`s, or an interface with default methods |
+| C# | a record of `Func<>` delegates, or one interface registered per family in DI |
+| Go | a struct of `func` fields |
+| C++ | a struct of `std::function`s, or a template policy parameter chosen at compile time |
+| Rust | a trait with associated types, passed as a generic `F: Factory` |
 
 ## TypeScript Example
 
@@ -546,6 +613,513 @@ console.log('Client: Testing the same client code with the second factory type..
 clientCode(new ConcreteFactory2());
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class AbstractProductA(ABC):
+    @abstractmethod
+    def useful_function_a(self) -> str:
+        pass
+
+
+class AbstractProductB(ABC):
+    @abstractmethod
+    def useful_function_b(self) -> str:
+        pass
+
+    @abstractmethod
+    def another_useful_function_b(self, collaborator: AbstractProductA) -> str:
+        pass
+
+
+class ConcreteProductA1(AbstractProductA):
+    def useful_function_a(self) -> str:
+        return "The result of the product A1."
+
+
+class ConcreteProductA2(AbstractProductA):
+    def useful_function_a(self) -> str:
+        return "The result of the product A2."
+
+
+class ConcreteProductB1(AbstractProductB):
+    def useful_function_b(self) -> str:
+        return "The result of the product B1."
+
+    def another_useful_function_b(self, collaborator: AbstractProductA) -> str:
+        result = collaborator.useful_function_a()
+        return f"The result of the B1 collaborating with the ({result})"
+
+
+class ConcreteProductB2(AbstractProductB):
+    def useful_function_b(self) -> str:
+        return "The result of the product B2."
+
+    def another_useful_function_b(self, collaborator: AbstractProductA) -> str:
+        result = collaborator.useful_function_a()
+        return f"The result of the B2 collaborating with the ({result})"
+
+
+class AbstractFactory(ABC):
+    @abstractmethod
+    def create_product_a(self) -> AbstractProductA:
+        pass
+
+    @abstractmethod
+    def create_product_b(self) -> AbstractProductB:
+        pass
+
+
+class ConcreteFactory1(AbstractFactory):
+    def create_product_a(self) -> AbstractProductA:
+        return ConcreteProductA1()
+
+    def create_product_b(self) -> AbstractProductB:
+        return ConcreteProductB1()
+
+
+class ConcreteFactory2(AbstractFactory):
+    def create_product_a(self) -> AbstractProductA:
+        return ConcreteProductA2()
+
+    def create_product_b(self) -> AbstractProductB:
+        return ConcreteProductB2()
+
+
+def client_code(factory: AbstractFactory) -> None:
+    product_a = factory.create_product_a()
+    product_b = factory.create_product_b()
+    print(product_b.useful_function_b())
+    print(product_b.another_useful_function_b(product_a))
+
+
+if __name__ == "__main__":
+    print("Client: Testing client code with the first factory type...")
+    client_code(ConcreteFactory1())
+    print()
+    print("Client: Testing the same client code with the second factory type...")
+    client_code(ConcreteFactory2())
+```
+
+## Java Example
+
+```java
+// Each distinct product of a family has a base interface.
+interface AbstractProductA {
+    String usefulFunctionA();
+}
+
+interface AbstractProductB {
+    String usefulFunctionB();
+    String anotherUsefulFunctionB(AbstractProductA collaborator);
+}
+
+class ConcreteProductA1 implements AbstractProductA {
+    public String usefulFunctionA() {
+        return "The result of the product A1.";
+    }
+}
+
+class ConcreteProductA2 implements AbstractProductA {
+    public String usefulFunctionA() {
+        return "The result of the product A2.";
+    }
+}
+
+class ConcreteProductB1 implements AbstractProductB {
+    public String usefulFunctionB() {
+        return "The result of the product B1.";
+    }
+    public String anotherUsefulFunctionB(AbstractProductA collaborator) {
+        return "The result of the B1 collaborating with the (" + collaborator.usefulFunctionA() + ")";
+    }
+}
+
+class ConcreteProductB2 implements AbstractProductB {
+    public String usefulFunctionB() {
+        return "The result of the product B2.";
+    }
+    public String anotherUsefulFunctionB(AbstractProductA collaborator) {
+        return "The result of the B2 collaborating with the (" + collaborator.usefulFunctionA() + ")";
+    }
+}
+
+// The Abstract Factory declares methods that return each abstract product.
+interface AbstractFactory {
+    AbstractProductA createProductA();
+    AbstractProductB createProductB();
+}
+
+class ConcreteFactory1 implements AbstractFactory {
+    public AbstractProductA createProductA() {
+        return new ConcreteProductA1();
+    }
+    public AbstractProductB createProductB() {
+        return new ConcreteProductB1();
+    }
+}
+
+class ConcreteFactory2 implements AbstractFactory {
+    public AbstractProductA createProductA() {
+        return new ConcreteProductA2();
+    }
+    public AbstractProductB createProductB() {
+        return new ConcreteProductB2();
+    }
+}
+
+public class Demo {
+    static void clientCode(AbstractFactory factory) {
+        AbstractProductA productA = factory.createProductA();
+        AbstractProductB productB = factory.createProductB();
+        System.out.println(productB.usefulFunctionB());
+        System.out.println(productB.anotherUsefulFunctionB(productA));
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Client: Testing client code with the first factory type...");
+        clientCode(new ConcreteFactory1());
+        System.out.println();
+        System.out.println("Client: Testing the same client code with the second factory type...");
+        clientCode(new ConcreteFactory2());
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// Each distinct product of a family has a base interface.
+public interface IAbstractProductA
+{
+    string UsefulFunctionA();
+}
+
+public interface IAbstractProductB
+{
+    string UsefulFunctionB();
+    string AnotherUsefulFunctionB(IAbstractProductA collaborator);
+}
+
+public class ConcreteProductA1 : IAbstractProductA
+{
+    public string UsefulFunctionA() => "The result of the product A1.";
+}
+
+public class ConcreteProductA2 : IAbstractProductA
+{
+    public string UsefulFunctionA() => "The result of the product A2.";
+}
+
+public class ConcreteProductB1 : IAbstractProductB
+{
+    public string UsefulFunctionB() => "The result of the product B1.";
+    public string AnotherUsefulFunctionB(IAbstractProductA collaborator) =>
+        "The result of the B1 collaborating with the (" + collaborator.UsefulFunctionA() + ")";
+}
+
+public class ConcreteProductB2 : IAbstractProductB
+{
+    public string UsefulFunctionB() => "The result of the product B2.";
+    public string AnotherUsefulFunctionB(IAbstractProductA collaborator) =>
+        "The result of the B2 collaborating with the (" + collaborator.UsefulFunctionA() + ")";
+}
+
+// The Abstract Factory declares methods that return each abstract product.
+public interface IAbstractFactory
+{
+    IAbstractProductA CreateProductA();
+    IAbstractProductB CreateProductB();
+}
+
+public class ConcreteFactory1 : IAbstractFactory
+{
+    public IAbstractProductA CreateProductA() => new ConcreteProductA1();
+    public IAbstractProductB CreateProductB() => new ConcreteProductB1();
+}
+
+public class ConcreteFactory2 : IAbstractFactory
+{
+    public IAbstractProductA CreateProductA() => new ConcreteProductA2();
+    public IAbstractProductB CreateProductB() => new ConcreteProductB2();
+}
+
+public class Program
+{
+    static void ClientCode(IAbstractFactory factory)
+    {
+        var productA = factory.CreateProductA();
+        var productB = factory.CreateProductB();
+        Console.WriteLine(productB.UsefulFunctionB());
+        Console.WriteLine(productB.AnotherUsefulFunctionB(productA));
+    }
+
+    public static void Main()
+    {
+        Console.WriteLine("Client: Testing client code with the first factory type...");
+        ClientCode(new ConcreteFactory1());
+        Console.WriteLine();
+        Console.WriteLine("Client: Testing the same client code with the second factory type...");
+        ClientCode(new ConcreteFactory2());
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Each distinct product of a family has a base interface.
+type AbstractProductA interface {
+	UsefulFunctionA() string
+}
+
+type AbstractProductB interface {
+	UsefulFunctionB() string
+	AnotherUsefulFunctionB(collaborator AbstractProductA) string
+}
+
+type ConcreteProductA1 struct{}
+
+func (p *ConcreteProductA1) UsefulFunctionA() string { return "The result of the product A1." }
+
+type ConcreteProductA2 struct{}
+
+func (p *ConcreteProductA2) UsefulFunctionA() string { return "The result of the product A2." }
+
+type ConcreteProductB1 struct{}
+
+func (p *ConcreteProductB1) UsefulFunctionB() string { return "The result of the product B1." }
+func (p *ConcreteProductB1) AnotherUsefulFunctionB(c AbstractProductA) string {
+	return "The result of the B1 collaborating with the (" + c.UsefulFunctionA() + ")"
+}
+
+type ConcreteProductB2 struct{}
+
+func (p *ConcreteProductB2) UsefulFunctionB() string { return "The result of the product B2." }
+func (p *ConcreteProductB2) AnotherUsefulFunctionB(c AbstractProductA) string {
+	return "The result of the B2 collaborating with the (" + c.UsefulFunctionA() + ")"
+}
+
+// AbstractFactory declares methods that return each abstract product.
+type AbstractFactory interface {
+	CreateProductA() AbstractProductA
+	CreateProductB() AbstractProductB
+}
+
+type ConcreteFactory1 struct{}
+
+func (f *ConcreteFactory1) CreateProductA() AbstractProductA { return &ConcreteProductA1{} }
+func (f *ConcreteFactory1) CreateProductB() AbstractProductB { return &ConcreteProductB1{} }
+
+type ConcreteFactory2 struct{}
+
+func (f *ConcreteFactory2) CreateProductA() AbstractProductA { return &ConcreteProductA2{} }
+func (f *ConcreteFactory2) CreateProductB() AbstractProductB { return &ConcreteProductB2{} }
+
+func clientCode(factory AbstractFactory) {
+	productA := factory.CreateProductA()
+	productB := factory.CreateProductB()
+	fmt.Println(productB.UsefulFunctionB())
+	fmt.Println(productB.AnotherUsefulFunctionB(productA))
+}
+
+func main() {
+	fmt.Println("Client: Testing client code with the first factory type...")
+	clientCode(&ConcreteFactory1{})
+	fmt.Println()
+	fmt.Println("Client: Testing the same client code with the second factory type...")
+	clientCode(&ConcreteFactory2{})
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+
+// Each distinct product of a family has a base interface.
+class AbstractProductA {
+public:
+    virtual ~AbstractProductA() = default;
+    virtual std::string usefulFunctionA() const = 0;
+};
+
+class ConcreteProductA1 : public AbstractProductA {
+public:
+    std::string usefulFunctionA() const override { return "The result of the product A1."; }
+};
+
+class ConcreteProductA2 : public AbstractProductA {
+public:
+    std::string usefulFunctionA() const override { return "The result of the product A2."; }
+};
+
+class AbstractProductB {
+public:
+    virtual ~AbstractProductB() = default;
+    virtual std::string usefulFunctionB() const = 0;
+    virtual std::string anotherUsefulFunctionB(const AbstractProductA& collaborator) const = 0;
+};
+
+class ConcreteProductB1 : public AbstractProductB {
+public:
+    std::string usefulFunctionB() const override { return "The result of the product B1."; }
+    std::string anotherUsefulFunctionB(const AbstractProductA& c) const override {
+        return "The result of the B1 collaborating with the (" + c.usefulFunctionA() + ")";
+    }
+};
+
+class ConcreteProductB2 : public AbstractProductB {
+public:
+    std::string usefulFunctionB() const override { return "The result of the product B2."; }
+    std::string anotherUsefulFunctionB(const AbstractProductA& c) const override {
+        return "The result of the B2 collaborating with the (" + c.usefulFunctionA() + ")";
+    }
+};
+
+// The Abstract Factory declares methods that return each abstract product.
+class AbstractFactory {
+public:
+    virtual ~AbstractFactory() = default;
+    virtual std::unique_ptr<AbstractProductA> createProductA() const = 0;
+    virtual std::unique_ptr<AbstractProductB> createProductB() const = 0;
+};
+
+class ConcreteFactory1 : public AbstractFactory {
+public:
+    std::unique_ptr<AbstractProductA> createProductA() const override {
+        return std::make_unique<ConcreteProductA1>();
+    }
+    std::unique_ptr<AbstractProductB> createProductB() const override {
+        return std::make_unique<ConcreteProductB1>();
+    }
+};
+
+class ConcreteFactory2 : public AbstractFactory {
+public:
+    std::unique_ptr<AbstractProductA> createProductA() const override {
+        return std::make_unique<ConcreteProductA2>();
+    }
+    std::unique_ptr<AbstractProductB> createProductB() const override {
+        return std::make_unique<ConcreteProductB2>();
+    }
+};
+
+void clientCode(const AbstractFactory& factory) {
+    auto productA = factory.createProductA();
+    auto productB = factory.createProductB();
+    std::cout << productB->usefulFunctionB() << "\n";
+    std::cout << productB->anotherUsefulFunctionB(*productA) << "\n";
+}
+
+int main() {
+    std::cout << "Client: Testing client code with the first factory type...\n";
+    clientCode(ConcreteFactory1());
+    std::cout << "\n";
+    std::cout << "Client: Testing the same client code with the second factory type...\n";
+    clientCode(ConcreteFactory2());
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// Each distinct product of a family has a base trait.
+trait AbstractProductA {
+    fn useful_function_a(&self) -> String;
+}
+
+trait AbstractProductB {
+    fn useful_function_b(&self) -> String;
+    fn another_useful_function_b(&self, collaborator: &dyn AbstractProductA) -> String;
+}
+
+struct ConcreteProductA1;
+impl AbstractProductA for ConcreteProductA1 {
+    fn useful_function_a(&self) -> String {
+        "The result of the product A1.".to_string()
+    }
+}
+
+struct ConcreteProductA2;
+impl AbstractProductA for ConcreteProductA2 {
+    fn useful_function_a(&self) -> String {
+        "The result of the product A2.".to_string()
+    }
+}
+
+struct ConcreteProductB1;
+impl AbstractProductB for ConcreteProductB1 {
+    fn useful_function_b(&self) -> String {
+        "The result of the product B1.".to_string()
+    }
+    fn another_useful_function_b(&self, collaborator: &dyn AbstractProductA) -> String {
+        format!(
+            "The result of the B1 collaborating with the ({})",
+            collaborator.useful_function_a()
+        )
+    }
+}
+
+struct ConcreteProductB2;
+impl AbstractProductB for ConcreteProductB2 {
+    fn useful_function_b(&self) -> String {
+        "The result of the product B2.".to_string()
+    }
+    fn another_useful_function_b(&self, collaborator: &dyn AbstractProductA) -> String {
+        format!(
+            "The result of the B2 collaborating with the ({})",
+            collaborator.useful_function_a()
+        )
+    }
+}
+
+// The Abstract Factory declares methods that return each abstract product.
+trait AbstractFactory {
+    fn create_product_a(&self) -> Box<dyn AbstractProductA>;
+    fn create_product_b(&self) -> Box<dyn AbstractProductB>;
+}
+
+struct ConcreteFactory1;
+impl AbstractFactory for ConcreteFactory1 {
+    fn create_product_a(&self) -> Box<dyn AbstractProductA> { Box::new(ConcreteProductA1) }
+    fn create_product_b(&self) -> Box<dyn AbstractProductB> { Box::new(ConcreteProductB1) }
+}
+
+struct ConcreteFactory2;
+impl AbstractFactory for ConcreteFactory2 {
+    fn create_product_a(&self) -> Box<dyn AbstractProductA> { Box::new(ConcreteProductA2) }
+    fn create_product_b(&self) -> Box<dyn AbstractProductB> { Box::new(ConcreteProductB2) }
+}
+
+fn client_code(factory: &dyn AbstractFactory) {
+    let product_a = factory.create_product_a();
+    let product_b = factory.create_product_b();
+    println!("{}", product_b.useful_function_b());
+    println!("{}", product_b.another_useful_function_b(product_a.as_ref()));
+}
+
+fn main() {
+    println!("Client: Testing client code with the first factory type...");
+    client_code(&ConcreteFactory1);
+    println!();
+    println!("Client: Testing the same client code with the second factory type...");
+    client_code(&ConcreteFactory2);
+}
+```
+
 ## Pairs well with
 
 Factory Method (each factory method inside an Abstract Factory is itself a Factory Method); Singleton (concrete factory
@@ -585,6 +1159,21 @@ functions as a translator between incompatible components, enabling them to work
 - You control both interfaces — just align them directly
 - The "adaptation" is a one-line wrapper → inline it
 - The codebase already has an adapter for this backend → extend or compose with the existing one
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a function mapping one shape to the other, or an object literal that satisfies the interface |
+| Python | a small function or wrapper — duck typing often needs no adapter at all |
+| Java | a lambda when the target is a functional interface |
+| C# | an extension method, or a lambda converted to the target delegate |
+| Go | a func-type adapter (like `http.HandlerFunc`); implicit interfaces often need nothing |
+| C++ | a lambda or `std::function`; a template adapter for static dispatch |
+| Rust | a newtype `struct W(T)` with `impl Trait for W`, or `From` / `Into` |
 
 ## TypeScript Example
 
@@ -651,6 +1240,352 @@ const adapter = new Adapter(adaptee);
 clientCode(adapter);
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Target(ABC):
+    """The domain-specific interface used by the client code."""
+
+    @abstractmethod
+    def request(self) -> str:
+        ...
+
+
+class DefaultTarget(Target):
+    def request(self) -> str:
+        return "Target: The default target's behavior."
+
+
+class Adaptee:
+    """Useful behavior with an interface incompatible with the client."""
+
+    def specific_request(self) -> str:
+        return ".eetpadA eht fo roivaheb laicepS"
+
+
+class Adapter(Target):
+    """Makes the Adaptee's interface compatible with the Target's."""
+
+    def __init__(self, adaptee: Adaptee):
+        self._adaptee = adaptee
+
+    def request(self) -> str:
+        result = self._adaptee.specific_request()[::-1]
+        return f"Adapter: (TRANSLATED) {result}"
+
+
+def client_code(target: Target) -> None:
+    print(target.request())
+
+
+if __name__ == "__main__":
+    print("Client: I can work just fine with the Target objects:")
+    client_code(DefaultTarget())
+    print()
+
+    adaptee = Adaptee()
+    print("Client: The Adaptee class has a weird interface. See, I don't understand it:")
+    print(f"Adaptee: {adaptee.specific_request()}")
+    print()
+
+    print("Client: But I can work with it via the Adapter:")
+    client_code(Adapter(adaptee))
+```
+
+## Java Example
+
+```java
+interface Target {
+    // The domain-specific interface used by the client code.
+    String request();
+}
+
+class DefaultTarget implements Target {
+    public String request() {
+        return "Target: The default target's behavior.";
+    }
+}
+
+// Useful behavior with an interface incompatible with the client.
+class Adaptee {
+    public String specificRequest() {
+        return ".eetpadA eht fo roivaheb laicepS";
+    }
+}
+
+// Makes the Adaptee's interface compatible with the Target's.
+class Adapter implements Target {
+    private final Adaptee adaptee;
+
+    public Adapter(Adaptee adaptee) {
+        this.adaptee = adaptee;
+    }
+
+    public String request() {
+        String result = new StringBuilder(adaptee.specificRequest()).reverse().toString();
+        return "Adapter: (TRANSLATED) " + result;
+    }
+}
+
+public class Demo {
+    static void clientCode(Target target) {
+        System.out.println(target.request());
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Client: I can work just fine with the Target objects:");
+        clientCode(new DefaultTarget());
+        System.out.println();
+
+        Adaptee adaptee = new Adaptee();
+        System.out.println("Client: The Adaptee class has a weird interface. See, I don't understand it:");
+        System.out.println("Adaptee: " + adaptee.specificRequest());
+        System.out.println();
+
+        System.out.println("Client: But I can work with it via the Adapter:");
+        clientCode(new Adapter(adaptee));
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Linq;
+
+// The domain-specific interface used by the client code.
+interface ITarget
+{
+    string Request();
+}
+
+class DefaultTarget : ITarget
+{
+    public string Request() => "Target: The default target's behavior.";
+}
+
+// Useful behavior with an interface incompatible with the client.
+class Adaptee
+{
+    public string SpecificRequest() => ".eetpadA eht fo roivaheb laicepS";
+}
+
+// Makes the Adaptee's interface compatible with the Target's.
+class Adapter : ITarget
+{
+    private readonly Adaptee _adaptee;
+
+    public Adapter(Adaptee adaptee) => _adaptee = adaptee;
+
+    public string Request()
+    {
+        var result = new string(_adaptee.SpecificRequest().Reverse().ToArray());
+        return $"Adapter: (TRANSLATED) {result}";
+    }
+}
+
+public class Program
+{
+    static void ClientCode(ITarget target) => Console.WriteLine(target.Request());
+
+    public static void Main()
+    {
+        Console.WriteLine("Client: I can work just fine with the Target objects:");
+        ClientCode(new DefaultTarget());
+        Console.WriteLine();
+
+        var adaptee = new Adaptee();
+        Console.WriteLine("Client: The Adaptee class has a weird interface. See, I don't understand it:");
+        Console.WriteLine($"Adaptee: {adaptee.SpecificRequest()}");
+        Console.WriteLine();
+
+        Console.WriteLine("Client: But I can work with it via the Adapter:");
+        ClientCode(new Adapter(adaptee));
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Target is the domain-specific interface used by the client code.
+type Target interface {
+	Request() string
+}
+
+type DefaultTarget struct{}
+
+func (t *DefaultTarget) Request() string {
+	return "Target: The default target's behavior."
+}
+
+// Adaptee has useful behavior but an incompatible interface.
+type Adaptee struct{}
+
+func (a *Adaptee) SpecificRequest() string {
+	return ".eetpadA eht fo roivaheb laicepS"
+}
+
+// Adapter makes the Adaptee's interface compatible with Target.
+type Adapter struct {
+	adaptee *Adaptee
+}
+
+func (a *Adapter) Request() string {
+	runes := []rune(a.adaptee.SpecificRequest())
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return fmt.Sprintf("Adapter: (TRANSLATED) %s", string(runes))
+}
+
+func clientCode(target Target) {
+	fmt.Println(target.Request())
+}
+
+func main() {
+	fmt.Println("Client: I can work just fine with the Target objects:")
+	clientCode(&DefaultTarget{})
+	fmt.Println()
+
+	adaptee := &Adaptee{}
+	fmt.Println("Client: The Adaptee class has a weird interface. See, I don't understand it:")
+	fmt.Printf("Adaptee: %s\n", adaptee.SpecificRequest())
+	fmt.Println()
+
+	fmt.Println("Client: But I can work with it via the Adapter:")
+	clientCode(&Adapter{adaptee: adaptee})
+	_ = strings.TrimSpace
+}
+```
+
+## C++ Example
+
+```cpp
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <string>
+
+// The domain-specific interface used by the client code.
+class Target {
+public:
+    virtual ~Target() = default;
+    virtual std::string request() const {
+        return "Target: The default target's behavior.";
+    }
+};
+
+// Useful behavior with an interface incompatible with the client.
+class Adaptee {
+public:
+    std::string specificRequest() const {
+        return ".eetpadA eht fo roivaheb laicepS";
+    }
+};
+
+// Makes the Adaptee's interface compatible with the Target's.
+class Adapter : public Target {
+private:
+    std::shared_ptr<Adaptee> adaptee_;
+
+public:
+    explicit Adapter(std::shared_ptr<Adaptee> adaptee) : adaptee_(std::move(adaptee)) {}
+
+    std::string request() const override {
+        std::string result = adaptee_->specificRequest();
+        std::reverse(result.begin(), result.end());
+        return "Adapter: (TRANSLATED) " + result;
+    }
+};
+
+void clientCode(const Target& target) {
+    std::cout << target.request() << "\n";
+}
+
+int main() {
+    std::cout << "Client: I can work just fine with the Target objects:\n";
+    Target target;
+    clientCode(target);
+    std::cout << "\n";
+
+    auto adaptee = std::make_shared<Adaptee>();
+    std::cout << "Client: The Adaptee class has a weird interface. See, I don't understand it:\n";
+    std::cout << "Adaptee: " << adaptee->specificRequest() << "\n\n";
+
+    std::cout << "Client: But I can work with it via the Adapter:\n";
+    Adapter adapter(adaptee);
+    clientCode(adapter);
+}
+```
+
+## Rust Example
+
+```rust
+// Target is the domain-specific interface used by the client code.
+trait Target {
+    fn request(&self) -> String;
+}
+
+struct DefaultTarget;
+
+impl Target for DefaultTarget {
+    fn request(&self) -> String {
+        String::from("Target: The default target's behavior.")
+    }
+}
+
+// Adaptee has useful behavior but an incompatible interface.
+struct Adaptee;
+
+impl Adaptee {
+    fn specific_request(&self) -> String {
+        String::from(".eetpadA eht fo roivaheb laicepS")
+    }
+}
+
+// Adapter makes the Adaptee's interface compatible with Target.
+struct Adapter {
+    adaptee: Adaptee,
+}
+
+impl Target for Adapter {
+    fn request(&self) -> String {
+        let result: String = self.adaptee.specific_request().chars().rev().collect();
+        format!("Adapter: (TRANSLATED) {}", result)
+    }
+}
+
+fn client_code(target: &dyn Target) {
+    println!("{}", target.request());
+}
+
+fn main() {
+    println!("Client: I can work just fine with the Target objects:");
+    client_code(&DefaultTarget);
+    println!();
+
+    let adaptee = Adaptee;
+    println!("Client: The Adaptee class has a weird interface. See, I don't understand it:");
+    println!("Adaptee: {}", adaptee.specific_request());
+    println!();
+
+    println!("Client: But I can work with it via the Adapter:");
+    client_code(&Adapter { adaptee });
+}
+```
+
 ## Pairs well with
 
 Bridge (Adapter focuses on making existing things compatible; Bridge designs the abstraction up-front to support
@@ -689,6 +1624,21 @@ separate hierarchies—abstraction and implementation—which can be developed i
 - You only have one dimension of variation → use Strategy or Adapter
 - The class isn't actually big → premature
 - Adapter already solves your interop problem → don't add a second hierarchy
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | inject the implementation object in the constructor — it's composition + an interface |
+| Python | pass the implementation (or a callable) as a constructor argument |
+| Java | an interface field injected through the constructor |
+| C# | an interface injected through the constructor / DI |
+| Go | a struct field of interface type |
+| C++ | pimpl, or a template parameter (static bridge) |
+| Rust | a generic `struct Shape<R: Renderer>` or a `Box<dyn Renderer>` field |
 
 ## TypeScript Example
 
@@ -772,6 +1722,475 @@ abstraction = new ExtendedAbstraction(implementation);
 clientCode(abstraction);
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Implementation(ABC):
+    """
+    The Implementation defines the interface for all implementation classes. It
+    doesn't have to match the Abstraction's interface. In fact, the two
+    interfaces can be entirely different. Typically the Implementation interface
+    provides only primitive operations, while the Abstraction defines higher-
+    level operations based on those primitives.
+    """
+
+    @abstractmethod
+    def operation_implementation(self) -> str:
+        pass
+
+
+class Abstraction:
+    """
+    The Abstraction defines the interface for the "control" part of the two
+    class hierarchies. It maintains a reference to an object of the
+    Implementation hierarchy and delegates all of the real work to this object.
+    """
+
+    def __init__(self, implementation: Implementation) -> None:
+        self.implementation = implementation
+
+    def operation(self) -> str:
+        result = self.implementation.operation_implementation()
+        return f"Abstraction: Base operation with:\n{result}"
+
+
+class ExtendedAbstraction(Abstraction):
+    """
+    You can extend the Abstraction without changing the Implementation classes.
+    """
+
+    def operation(self) -> str:
+        result = self.implementation.operation_implementation()
+        return f"ExtendedAbstraction: Extended operation with:\n{result}"
+
+
+class ConcreteImplementationA(Implementation):
+    def operation_implementation(self) -> str:
+        return "ConcreteImplementationA: Here's the result on the platform A."
+
+
+class ConcreteImplementationB(Implementation):
+    def operation_implementation(self) -> str:
+        return "ConcreteImplementationB: Here's the result on the platform B."
+
+
+def client_code(abstraction: Abstraction) -> None:
+    """
+    Except for the initialization phase, the client code should only depend on
+    the Abstraction class.
+    """
+    print(abstraction.operation())
+
+
+if __name__ == "__main__":
+    implementation = ConcreteImplementationA()
+    abstraction = Abstraction(implementation)
+    client_code(abstraction)
+
+    print("")
+
+    implementation = ConcreteImplementationB()
+    abstraction = ExtendedAbstraction(implementation)
+    client_code(abstraction)
+```
+
+## Java Example
+
+```java
+// The Implementation defines the interface for all implementation classes. It
+// doesn't have to match the Abstraction's interface. Typically it provides only
+// primitive operations, while the Abstraction defines higher-level operations.
+interface Implementation {
+    String operationImplementation();
+}
+
+// The Abstraction defines the interface for the "control" part of the two class
+// hierarchies. It maintains a reference to an Implementation object and
+// delegates all of the real work to this object.
+class Abstraction {
+    protected Implementation implementation;
+
+    public Abstraction(Implementation implementation) {
+        this.implementation = implementation;
+    }
+
+    public String operation() {
+        return "Abstraction: Base operation with:\n" +
+                implementation.operationImplementation();
+    }
+}
+
+// You can extend the Abstraction without changing the Implementation classes.
+class ExtendedAbstraction extends Abstraction {
+    public ExtendedAbstraction(Implementation implementation) {
+        super(implementation);
+    }
+
+    @Override
+    public String operation() {
+        return "ExtendedAbstraction: Extended operation with:\n" +
+                implementation.operationImplementation();
+    }
+}
+
+class ConcreteImplementationA implements Implementation {
+    @Override
+    public String operationImplementation() {
+        return "ConcreteImplementationA: Here's the result on the platform A.";
+    }
+}
+
+class ConcreteImplementationB implements Implementation {
+    @Override
+    public String operationImplementation() {
+        return "ConcreteImplementationB: Here's the result on the platform B.";
+    }
+}
+
+// Except for the initialization phase, the client code should only depend on
+// the Abstraction class.
+public class Demo {
+    static void clientCode(Abstraction abstraction) {
+        System.out.println(abstraction.operation());
+    }
+
+    public static void main(String[] args) {
+        Implementation implementation = new ConcreteImplementationA();
+        Abstraction abstraction = new Abstraction(implementation);
+        clientCode(abstraction);
+
+        System.out.println();
+
+        implementation = new ConcreteImplementationB();
+        abstraction = new ExtendedAbstraction(implementation);
+        clientCode(abstraction);
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Implementation defines the interface for all implementation classes. It
+// doesn't have to match the Abstraction's interface. Typically it provides only
+// primitive operations, while the Abstraction defines higher-level operations.
+public interface IImplementation
+{
+    string OperationImplementation();
+}
+
+// The Abstraction defines the interface for the "control" part of the two class
+// hierarchies. It maintains a reference to an Implementation object and
+// delegates all of the real work to this object.
+public class Abstraction
+{
+    protected IImplementation _implementation;
+
+    public Abstraction(IImplementation implementation)
+    {
+        _implementation = implementation;
+    }
+
+    public virtual string Operation()
+    {
+        return "Abstraction: Base operation with:\n" +
+            _implementation.OperationImplementation();
+    }
+}
+
+// You can extend the Abstraction without changing the Implementation classes.
+public class ExtendedAbstraction : Abstraction
+{
+    public ExtendedAbstraction(IImplementation implementation)
+        : base(implementation)
+    {
+    }
+
+    public override string Operation()
+    {
+        return "ExtendedAbstraction: Extended operation with:\n" +
+            _implementation.OperationImplementation();
+    }
+}
+
+public class ConcreteImplementationA : IImplementation
+{
+    public string OperationImplementation()
+    {
+        return "ConcreteImplementationA: Here's the result on the platform A.";
+    }
+}
+
+public class ConcreteImplementationB : IImplementation
+{
+    public string OperationImplementation()
+    {
+        return "ConcreteImplementationB: Here's the result on the platform B.";
+    }
+}
+
+// Except for the initialization phase, the client code should only depend on
+// the Abstraction class.
+public class Demo
+{
+    static void ClientCode(Abstraction abstraction)
+    {
+        Console.WriteLine(abstraction.Operation());
+    }
+
+    public static void Main(string[] args)
+    {
+        IImplementation implementation = new ConcreteImplementationA();
+        Abstraction abstraction = new Abstraction(implementation);
+        ClientCode(abstraction);
+
+        Console.WriteLine();
+
+        implementation = new ConcreteImplementationB();
+        abstraction = new ExtendedAbstraction(implementation);
+        ClientCode(abstraction);
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Implementation defines the interface for all implementation classes. It
+// doesn't have to match the Abstraction's interface. Typically it provides only
+// primitive operations, while the Abstraction defines higher-level operations.
+type Implementation interface {
+	OperationImplementation() string
+}
+
+// Abstraction defines the interface for the "control" part of the two class
+// hierarchies. It holds a reference to an Implementation and delegates all of
+// the real work to it.
+type Abstraction struct {
+	implementation Implementation
+}
+
+func (a *Abstraction) Operation() string {
+	return "Abstraction: Base operation with:\n" +
+		a.implementation.OperationImplementation()
+}
+
+// ExtendedAbstraction extends the Abstraction without changing implementations.
+type ExtendedAbstraction struct {
+	Abstraction
+}
+
+func (a *ExtendedAbstraction) Operation() string {
+	return "ExtendedAbstraction: Extended operation with:\n" +
+		a.implementation.OperationImplementation()
+}
+
+type ConcreteImplementationA struct{}
+
+func (c *ConcreteImplementationA) OperationImplementation() string {
+	return "ConcreteImplementationA: Here's the result on the platform A."
+}
+
+type ConcreteImplementationB struct{}
+
+func (c *ConcreteImplementationB) OperationImplementation() string {
+	return "ConcreteImplementationB: Here's the result on the platform B."
+}
+
+// Operationer captures the shared behavior so the client can accept either
+// abstraction variant.
+type Operationer interface {
+	Operation() string
+}
+
+// clientCode should only depend on the Abstraction's behavior.
+func clientCode(a Operationer) {
+	fmt.Println(a.Operation())
+}
+
+func main() {
+	implementation := &ConcreteImplementationA{}
+	abstraction := &Abstraction{implementation: implementation}
+	clientCode(abstraction)
+
+	fmt.Println("")
+
+	implementationB := &ConcreteImplementationB{}
+	extended := &ExtendedAbstraction{Abstraction{implementation: implementationB}}
+	clientCode(extended)
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+
+// The Implementation defines the interface for all implementation classes. It
+// doesn't have to match the Abstraction's interface. Typically it provides only
+// primitive operations, while the Abstraction defines higher-level operations.
+class Implementation {
+public:
+    virtual ~Implementation() = default;
+    virtual std::string OperationImplementation() const = 0;
+};
+
+// The Abstraction defines the interface for the "control" part of the two class
+// hierarchies. It holds a reference to an Implementation and delegates all of
+// the real work to it.
+class Abstraction {
+protected:
+    std::shared_ptr<Implementation> implementation_;
+
+public:
+    explicit Abstraction(std::shared_ptr<Implementation> implementation)
+        : implementation_(std::move(implementation)) {}
+    virtual ~Abstraction() = default;
+
+    virtual std::string Operation() const {
+        return "Abstraction: Base operation with:\n" +
+               implementation_->OperationImplementation();
+    }
+};
+
+// You can extend the Abstraction without changing the Implementation classes.
+class ExtendedAbstraction : public Abstraction {
+public:
+    using Abstraction::Abstraction;
+
+    std::string Operation() const override {
+        return "ExtendedAbstraction: Extended operation with:\n" +
+               implementation_->OperationImplementation();
+    }
+};
+
+class ConcreteImplementationA : public Implementation {
+public:
+    std::string OperationImplementation() const override {
+        return "ConcreteImplementationA: Here's the result on the platform A.";
+    }
+};
+
+class ConcreteImplementationB : public Implementation {
+public:
+    std::string OperationImplementation() const override {
+        return "ConcreteImplementationB: Here's the result on the platform B.";
+    }
+};
+
+// Except for the initialization phase, the client code should only depend on
+// the Abstraction class.
+void ClientCode(const Abstraction& abstraction) {
+    std::cout << abstraction.Operation() << "\n";
+}
+
+int main() {
+    auto implementationA = std::make_shared<ConcreteImplementationA>();
+    Abstraction abstraction(implementationA);
+    ClientCode(abstraction);
+
+    std::cout << "\n";
+
+    auto implementationB = std::make_shared<ConcreteImplementationB>();
+    ExtendedAbstraction extended(implementationB);
+    ClientCode(extended);
+
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The Implementation trait defines the interface for all implementation types.
+// It doesn't have to match the Abstraction's interface. Typically it provides
+// only primitive operations, while the Abstraction defines higher-level ones.
+trait Implementation {
+    fn operation_implementation(&self) -> String;
+}
+
+struct ConcreteImplementationA;
+
+impl Implementation for ConcreteImplementationA {
+    fn operation_implementation(&self) -> String {
+        String::from("ConcreteImplementationA: Here's the result on the platform A.")
+    }
+}
+
+struct ConcreteImplementationB;
+
+impl Implementation for ConcreteImplementationB {
+    fn operation_implementation(&self) -> String {
+        String::from("ConcreteImplementationB: Here's the result on the platform B.")
+    }
+}
+
+// The Abstraction trait defines the "control" part of the two hierarchies.
+trait Abstraction {
+    fn operation(&self) -> String;
+}
+
+// The base Abstraction holds a reference to an Implementation and delegates the
+// real work to it.
+struct BaseAbstraction {
+    implementation: Box<dyn Implementation>,
+}
+
+impl Abstraction for BaseAbstraction {
+    fn operation(&self) -> String {
+        format!(
+            "Abstraction: Base operation with:\n{}",
+            self.implementation.operation_implementation()
+        )
+    }
+}
+
+// You can extend the Abstraction without changing the Implementation types.
+struct ExtendedAbstraction {
+    implementation: Box<dyn Implementation>,
+}
+
+impl Abstraction for ExtendedAbstraction {
+    fn operation(&self) -> String {
+        format!(
+            "ExtendedAbstraction: Extended operation with:\n{}",
+            self.implementation.operation_implementation()
+        )
+    }
+}
+
+// Except for the initialization phase, the client code should only depend on
+// the Abstraction trait.
+fn client_code(abstraction: &dyn Abstraction) {
+    println!("{}", abstraction.operation());
+}
+
+fn main() {
+    let abstraction = BaseAbstraction {
+        implementation: Box::new(ConcreteImplementationA),
+    };
+    client_code(&abstraction);
+
+    println!();
+
+    let abstraction = ExtendedAbstraction {
+        implementation: Box::new(ConcreteImplementationB),
+    };
+    client_code(&abstraction);
+}
+```
+
 ## Pairs well with
 
 Adapter (Adapter retrofits incompatible interfaces; Bridge designs the split up-front); Abstract Factory (Bridge often
@@ -812,6 +2231,21 @@ different object types and representations through the same construction code.
 - Constructor takes ≤4 args and they are all required → just use a constructor
 - Object has no optional or step-wise configuration → unnecessary
 - A simple object literal `{ a, b, c }` would do the job
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an options object merged with defaults: `{ ...defaults, ...opts }` |
+| Python | keyword arguments with defaults; `dataclasses.replace` for variants |
+| Java | records + static factories; hand-write a Builder only for >4 optional params |
+| C# | object initializers `new X { A = 1 }`, named/optional params, `with` on records |
+| Go | functional options: `New(addr, WithTimeout(5*time.Second))` |
+| C++ | designated initializers on an aggregate struct (C++20) |
+| Rust | struct update syntax `X { a: 1, ..Default::default() }` |
 
 ## TypeScript Example
 
@@ -961,6 +2395,568 @@ const director = new Director();
 clientCode(director);
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+from typing import List
+
+
+class Product1:
+    """The complex object under construction."""
+
+    def __init__(self) -> None:
+        self.parts: List[str] = []
+
+    def list_parts(self) -> None:
+        print(f"Product parts: {', '.join(self.parts)}\n")
+
+
+class Builder(ABC):
+    @abstractmethod
+    def produce_part_a(self) -> None:
+        pass
+
+    @abstractmethod
+    def produce_part_b(self) -> None:
+        pass
+
+    @abstractmethod
+    def produce_part_c(self) -> None:
+        pass
+
+
+class ConcreteBuilder1(Builder):
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._product = Product1()
+
+    def produce_part_a(self) -> None:
+        self._product.parts.append("PartA1")
+
+    def produce_part_b(self) -> None:
+        self._product.parts.append("PartB1")
+
+    def produce_part_c(self) -> None:
+        self._product.parts.append("PartC1")
+
+    def get_product(self) -> Product1:
+        product = self._product
+        self.reset()
+        return product
+
+
+class Director:
+    """Executes the building steps in a particular sequence."""
+
+    def __init__(self) -> None:
+        self._builder: Builder = None
+
+    def set_builder(self, builder: Builder) -> None:
+        self._builder = builder
+
+    def build_minimal_viable_product(self) -> None:
+        self._builder.produce_part_a()
+
+    def build_full_featured_product(self) -> None:
+        self._builder.produce_part_a()
+        self._builder.produce_part_b()
+        self._builder.produce_part_c()
+
+
+def client_code(director: Director) -> None:
+    builder = ConcreteBuilder1()
+    director.set_builder(builder)
+
+    print("Standard basic product:")
+    director.build_minimal_viable_product()
+    builder.get_product().list_parts()
+
+    print("Standard full featured product:")
+    director.build_full_featured_product()
+    builder.get_product().list_parts()
+
+    # The Builder pattern can be used without a Director class.
+    print("Custom product:")
+    builder.produce_part_a()
+    builder.produce_part_c()
+    builder.get_product().list_parts()
+
+
+if __name__ == "__main__":
+    client_code(Director())
+```
+
+## Java Example
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+// The complex object under construction.
+class Product1 {
+    public List<String> parts = new ArrayList<>();
+
+    public void listParts() {
+        System.out.println("Product parts: " + String.join(", ", parts) + "\n");
+    }
+}
+
+// The Builder interface specifies methods for creating the parts of a product.
+interface Builder {
+    void producePartA();
+    void producePartB();
+    void producePartC();
+}
+
+class ConcreteBuilder1 implements Builder {
+    private Product1 product;
+
+    public ConcreteBuilder1() {
+        reset();
+    }
+
+    public void reset() {
+        product = new Product1();
+    }
+
+    public void producePartA() {
+        product.parts.add("PartA1");
+    }
+
+    public void producePartB() {
+        product.parts.add("PartB1");
+    }
+
+    public void producePartC() {
+        product.parts.add("PartC1");
+    }
+
+    public Product1 getProduct() {
+        Product1 result = product;
+        reset();
+        return result;
+    }
+}
+
+// The Director executes building steps in a particular sequence.
+class Director {
+    private Builder builder;
+
+    public void setBuilder(Builder builder) {
+        this.builder = builder;
+    }
+
+    public void buildMinimalViableProduct() {
+        builder.producePartA();
+    }
+
+    public void buildFullFeaturedProduct() {
+        builder.producePartA();
+        builder.producePartB();
+        builder.producePartC();
+    }
+}
+
+public class Demo {
+    static void clientCode(Director director) {
+        ConcreteBuilder1 builder = new ConcreteBuilder1();
+        director.setBuilder(builder);
+
+        System.out.println("Standard basic product:");
+        director.buildMinimalViableProduct();
+        builder.getProduct().listParts();
+
+        System.out.println("Standard full featured product:");
+        director.buildFullFeaturedProduct();
+        builder.getProduct().listParts();
+
+        System.out.println("Custom product:");
+        builder.producePartA();
+        builder.producePartC();
+        builder.getProduct().listParts();
+    }
+
+    public static void main(String[] args) {
+        clientCode(new Director());
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+// The complex object under construction.
+public class Product1
+{
+    public List<string> Parts = new List<string>();
+
+    public void ListParts()
+    {
+        Console.WriteLine("Product parts: " + string.Join(", ", Parts) + "\n");
+    }
+}
+
+// The Builder interface specifies methods for creating the parts of a product.
+public interface IBuilder
+{
+    void ProducePartA();
+    void ProducePartB();
+    void ProducePartC();
+}
+
+public class ConcreteBuilder1 : IBuilder
+{
+    private Product1 _product = new Product1();
+
+    public ConcreteBuilder1() => Reset();
+
+    public void Reset() => _product = new Product1();
+
+    public void ProducePartA() => _product.Parts.Add("PartA1");
+    public void ProducePartB() => _product.Parts.Add("PartB1");
+    public void ProducePartC() => _product.Parts.Add("PartC1");
+
+    public Product1 GetProduct()
+    {
+        var result = _product;
+        Reset();
+        return result;
+    }
+}
+
+// The Director executes building steps in a particular sequence.
+public class Director
+{
+    private IBuilder _builder;
+
+    public void SetBuilder(IBuilder builder) => _builder = builder;
+
+    public void BuildMinimalViableProduct() => _builder.ProducePartA();
+
+    public void BuildFullFeaturedProduct()
+    {
+        _builder.ProducePartA();
+        _builder.ProducePartB();
+        _builder.ProducePartC();
+    }
+}
+
+public class Program
+{
+    static void ClientCode(Director director)
+    {
+        var builder = new ConcreteBuilder1();
+        director.SetBuilder(builder);
+
+        Console.WriteLine("Standard basic product:");
+        director.BuildMinimalViableProduct();
+        builder.GetProduct().ListParts();
+
+        Console.WriteLine("Standard full featured product:");
+        director.BuildFullFeaturedProduct();
+        builder.GetProduct().ListParts();
+
+        Console.WriteLine("Custom product:");
+        builder.ProducePartA();
+        builder.ProducePartC();
+        builder.GetProduct().ListParts();
+    }
+
+    public static void Main()
+    {
+        ClientCode(new Director());
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Product1 is the complex object under construction.
+type Product1 struct {
+	parts []string
+}
+
+func (p *Product1) ListParts() {
+	fmt.Printf("Product parts: %s\n\n", strings.Join(p.parts, ", "))
+}
+
+// Builder specifies methods for creating the parts of a product.
+type Builder interface {
+	ProducePartA()
+	ProducePartB()
+	ProducePartC()
+}
+
+type ConcreteBuilder1 struct {
+	product *Product1
+}
+
+func NewConcreteBuilder1() *ConcreteBuilder1 {
+	b := &ConcreteBuilder1{}
+	b.Reset()
+	return b
+}
+
+func (b *ConcreteBuilder1) Reset() {
+	b.product = &Product1{}
+}
+
+func (b *ConcreteBuilder1) ProducePartA() {
+	b.product.parts = append(b.product.parts, "PartA1")
+}
+
+func (b *ConcreteBuilder1) ProducePartB() {
+	b.product.parts = append(b.product.parts, "PartB1")
+}
+
+func (b *ConcreteBuilder1) ProducePartC() {
+	b.product.parts = append(b.product.parts, "PartC1")
+}
+
+func (b *ConcreteBuilder1) GetProduct() *Product1 {
+	result := b.product
+	b.Reset()
+	return result
+}
+
+// Director executes building steps in a particular sequence.
+type Director struct {
+	builder Builder
+}
+
+func (d *Director) SetBuilder(builder Builder) {
+	d.builder = builder
+}
+
+func (d *Director) BuildMinimalViableProduct() {
+	d.builder.ProducePartA()
+}
+
+func (d *Director) BuildFullFeaturedProduct() {
+	d.builder.ProducePartA()
+	d.builder.ProducePartB()
+	d.builder.ProducePartC()
+}
+
+func clientCode(director *Director) {
+	builder := NewConcreteBuilder1()
+	director.SetBuilder(builder)
+
+	fmt.Println("Standard basic product:")
+	director.BuildMinimalViableProduct()
+	builder.GetProduct().ListParts()
+
+	fmt.Println("Standard full featured product:")
+	director.BuildFullFeaturedProduct()
+	builder.GetProduct().ListParts()
+
+	fmt.Println("Custom product:")
+	builder.ProducePartA()
+	builder.ProducePartC()
+	builder.GetProduct().ListParts()
+}
+
+func main() {
+	clientCode(&Director{})
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+// The complex object under construction.
+class Product1 {
+public:
+    std::vector<std::string> parts;
+
+    void listParts() const {
+        std::cout << "Product parts: ";
+        for (size_t i = 0; i < parts.size(); ++i) {
+            std::cout << parts[i];
+            if (i + 1 < parts.size()) std::cout << ", ";
+        }
+        std::cout << "\n\n";
+    }
+};
+
+// The Builder interface specifies methods for creating the parts of a product.
+class Builder {
+public:
+    virtual ~Builder() = default;
+    virtual void producePartA() = 0;
+    virtual void producePartB() = 0;
+    virtual void producePartC() = 0;
+};
+
+class ConcreteBuilder1 : public Builder {
+    std::unique_ptr<Product1> product;
+
+public:
+    ConcreteBuilder1() { reset(); }
+
+    void reset() { product = std::make_unique<Product1>(); }
+
+    void producePartA() override { product->parts.push_back("PartA1"); }
+    void producePartB() override { product->parts.push_back("PartB1"); }
+    void producePartC() override { product->parts.push_back("PartC1"); }
+
+    std::unique_ptr<Product1> getProduct() {
+        auto result = std::move(product);
+        reset();
+        return result;
+    }
+};
+
+// The Director executes building steps in a particular sequence.
+class Director {
+    Builder* builder = nullptr;
+
+public:
+    void setBuilder(Builder* b) { builder = b; }
+
+    void buildMinimalViableProduct() { builder->producePartA(); }
+
+    void buildFullFeaturedProduct() {
+        builder->producePartA();
+        builder->producePartB();
+        builder->producePartC();
+    }
+};
+
+void clientCode(Director& director) {
+    ConcreteBuilder1 builder;
+    director.setBuilder(&builder);
+
+    std::cout << "Standard basic product:\n";
+    director.buildMinimalViableProduct();
+    builder.getProduct()->listParts();
+
+    std::cout << "Standard full featured product:\n";
+    director.buildFullFeaturedProduct();
+    builder.getProduct()->listParts();
+
+    std::cout << "Custom product:\n";
+    builder.producePartA();
+    builder.producePartC();
+    builder.getProduct()->listParts();
+}
+
+int main() {
+    Director director;
+    clientCode(director);
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The complex object under construction.
+#[derive(Default)]
+struct Product1 {
+    parts: Vec<String>,
+}
+
+impl Product1 {
+    fn list_parts(&self) {
+        println!("Product parts: {}\n", self.parts.join(", "));
+    }
+}
+
+// The Builder trait specifies methods for creating the parts of a product.
+trait Builder {
+    fn produce_part_a(&mut self);
+    fn produce_part_b(&mut self);
+    fn produce_part_c(&mut self);
+}
+
+#[derive(Default)]
+struct ConcreteBuilder1 {
+    product: Product1,
+}
+
+impl ConcreteBuilder1 {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn reset(&mut self) {
+        self.product = Product1::default();
+    }
+
+    // Returns the built product and resets for the next build.
+    fn get_product(&mut self) -> Product1 {
+        std::mem::take(&mut self.product)
+    }
+}
+
+impl Builder for ConcreteBuilder1 {
+    fn produce_part_a(&mut self) {
+        self.product.parts.push("PartA1".to_string());
+    }
+    fn produce_part_b(&mut self) {
+        self.product.parts.push("PartB1".to_string());
+    }
+    fn produce_part_c(&mut self) {
+        self.product.parts.push("PartC1".to_string());
+    }
+}
+
+// The Director executes building steps in a particular sequence.
+#[derive(Default)]
+struct Director;
+
+impl Director {
+    fn build_minimal_viable_product(&self, builder: &mut dyn Builder) {
+        builder.produce_part_a();
+    }
+
+    fn build_full_featured_product(&self, builder: &mut dyn Builder) {
+        builder.produce_part_a();
+        builder.produce_part_b();
+        builder.produce_part_c();
+    }
+}
+
+fn main() {
+    let director = Director;
+    let mut builder = ConcreteBuilder1::new();
+
+    println!("Standard basic product:");
+    director.build_minimal_viable_product(&mut builder);
+    builder.get_product().list_parts();
+
+    println!("Standard full featured product:");
+    director.build_full_featured_product(&mut builder);
+    builder.get_product().list_parts();
+
+    // The Builder pattern can be used without a Director.
+    println!("Custom product:");
+    builder.produce_part_a();
+    builder.produce_part_c();
+    builder.get_product().list_parts();
+}
+```
+
 ## Pairs well with
 
 Composite (Builder constructs Composite trees); Abstract Factory (Builder may produce parts via an Abstract Factory);
@@ -998,6 +2994,21 @@ handler decides either to process the request or to pass it to the next handler.
 - Only one handler exists → call it directly
 - All handlers always run regardless of result → use a flat list and `forEach`
 - The chain is fixed at compile time and never reordered → just hardcode the call sequence
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an array of handler functions, first non-`undefined` result wins; Express-style middleware |
+| Python | a list of callables; first non-`None` result wins |
+| Java | a `List<Handler>` streamed to the first present `Optional`; servlet filters |
+| C# | the ASP.NET middleware pipeline, or a list of `Func<>` |
+| Go | a slice of funcs, or chained `http.Handler` middleware |
+| C++ | a `vector<std::function>` walked until one handles it |
+| Rust | `handlers.iter().find_map(|h| h(&req))` |
 
 ## TypeScript Example
 
@@ -1103,6 +3114,513 @@ console.log('Subchain: Squirrel > Dog\n');
 clientCode(squirrel);
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from typing import Optional
+
+
+class Handler(ABC):
+    """Declares methods for building the chain and executing a request."""
+
+    @abstractmethod
+    def set_next(self, handler: "Handler") -> "Handler":
+        pass
+
+    @abstractmethod
+    def handle(self, request: str) -> Optional[str]:
+        pass
+
+
+class AbstractHandler(Handler):
+    """Implements the default chaining behavior."""
+
+    _next_handler: Handler = None
+
+    def set_next(self, handler: Handler) -> Handler:
+        self._next_handler = handler
+        # Returning the handler lets us link calls like:
+        # monkey.set_next(squirrel).set_next(dog)
+        return handler
+
+    @abstractmethod
+    def handle(self, request: str) -> Optional[str]:
+        if self._next_handler:
+            return self._next_handler.handle(request)
+        return None
+
+
+class MonkeyHandler(AbstractHandler):
+    def handle(self, request: str) -> Optional[str]:
+        if request == "Banana":
+            return f"Monkey: I'll eat the {request}."
+        return super().handle(request)
+
+
+class SquirrelHandler(AbstractHandler):
+    def handle(self, request: str) -> Optional[str]:
+        if request == "Nut":
+            return f"Squirrel: I'll eat the {request}."
+        return super().handle(request)
+
+
+class DogHandler(AbstractHandler):
+    def handle(self, request: str) -> Optional[str]:
+        if request == "MeatBall":
+            return f"Dog: I'll eat the {request}."
+        return super().handle(request)
+
+
+def client_code(handler: Handler) -> None:
+    for food in ["Nut", "Banana", "Cup of coffee"]:
+        print(f"Client: Who wants a {food}?")
+        result = handler.handle(food)
+        if result:
+            print(f"  {result}")
+        else:
+            print(f"  {food} was left untouched.")
+
+
+if __name__ == "__main__":
+    monkey = MonkeyHandler()
+    squirrel = SquirrelHandler()
+    dog = DogHandler()
+    monkey.set_next(squirrel).set_next(dog)
+
+    print("Chain: Monkey > Squirrel > Dog\n")
+    client_code(monkey)
+    print("")
+    print("Subchain: Squirrel > Dog\n")
+    client_code(squirrel)
+```
+
+## Java Example
+
+```java
+// The Handler interface declares chaining and request-handling methods.
+interface Handler {
+    Handler setNext(Handler handler);
+
+    String handle(String request);
+}
+
+// The default chaining behavior lives in a base handler class.
+abstract class AbstractHandler implements Handler {
+    private Handler nextHandler;
+
+    public Handler setNext(Handler handler) {
+        this.nextHandler = handler;
+        // Returning the handler lets us link calls like:
+        // monkey.setNext(squirrel).setNext(dog);
+        return handler;
+    }
+
+    public String handle(String request) {
+        if (nextHandler != null) {
+            return nextHandler.handle(request);
+        }
+        return null;
+    }
+}
+
+class MonkeyHandler extends AbstractHandler {
+    public String handle(String request) {
+        if (request.equals("Banana")) {
+            return "Monkey: I'll eat the " + request + ".";
+        }
+        return super.handle(request);
+    }
+}
+
+class SquirrelHandler extends AbstractHandler {
+    public String handle(String request) {
+        if (request.equals("Nut")) {
+            return "Squirrel: I'll eat the " + request + ".";
+        }
+        return super.handle(request);
+    }
+}
+
+class DogHandler extends AbstractHandler {
+    public String handle(String request) {
+        if (request.equals("MeatBall")) {
+            return "Dog: I'll eat the " + request + ".";
+        }
+        return super.handle(request);
+    }
+}
+
+public class Demo {
+    static void clientCode(Handler handler) {
+        for (String food : new String[] {"Nut", "Banana", "Cup of coffee"}) {
+            System.out.println("Client: Who wants a " + food + "?");
+            String result = handler.handle(food);
+            if (result != null) {
+                System.out.println("  " + result);
+            } else {
+                System.out.println("  " + food + " was left untouched.");
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        MonkeyHandler monkey = new MonkeyHandler();
+        SquirrelHandler squirrel = new SquirrelHandler();
+        DogHandler dog = new DogHandler();
+        monkey.setNext(squirrel).setNext(dog);
+
+        System.out.println("Chain: Monkey > Squirrel > Dog\n");
+        clientCode(monkey);
+        System.out.println("");
+        System.out.println("Subchain: Squirrel > Dog\n");
+        clientCode(squirrel);
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Handler interface declares chaining and request-handling methods.
+interface IHandler
+{
+    IHandler SetNext(IHandler handler);
+
+    string Handle(string request);
+}
+
+// The default chaining behavior lives in a base handler class.
+abstract class AbstractHandler : IHandler
+{
+    private IHandler _nextHandler;
+
+    public IHandler SetNext(IHandler handler)
+    {
+        _nextHandler = handler;
+        // Returning the handler lets us link calls like:
+        // monkey.SetNext(squirrel).SetNext(dog);
+        return handler;
+    }
+
+    public virtual string Handle(string request) => _nextHandler?.Handle(request);
+}
+
+class MonkeyHandler : AbstractHandler
+{
+    public override string Handle(string request) =>
+        request == "Banana" ? $"Monkey: I'll eat the {request}." : base.Handle(request);
+}
+
+class SquirrelHandler : AbstractHandler
+{
+    public override string Handle(string request) =>
+        request == "Nut" ? $"Squirrel: I'll eat the {request}." : base.Handle(request);
+}
+
+class DogHandler : AbstractHandler
+{
+    public override string Handle(string request) =>
+        request == "MeatBall" ? $"Dog: I'll eat the {request}." : base.Handle(request);
+}
+
+class Program
+{
+    static void ClientCode(IHandler handler)
+    {
+        foreach (var food in new[] { "Nut", "Banana", "Cup of coffee" })
+        {
+            Console.WriteLine($"Client: Who wants a {food}?");
+            var result = handler.Handle(food);
+            if (result != null)
+                Console.WriteLine($"  {result}");
+            else
+                Console.WriteLine($"  {food} was left untouched.");
+        }
+    }
+
+    static void Main()
+    {
+        var monkey = new MonkeyHandler();
+        var squirrel = new SquirrelHandler();
+        var dog = new DogHandler();
+        monkey.SetNext(squirrel).SetNext(dog);
+
+        Console.WriteLine("Chain: Monkey > Squirrel > Dog\n");
+        ClientCode(monkey);
+        Console.WriteLine("");
+        Console.WriteLine("Subchain: Squirrel > Dog\n");
+        ClientCode(squirrel);
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Handler declares chaining and request-handling methods.
+type Handler interface {
+	SetNext(handler Handler) Handler
+	Handle(request string) string
+}
+
+// BaseHandler implements the default chaining behavior; concrete handlers embed
+// it and provide a next() so the base can forward requests along the chain.
+type BaseHandler struct {
+	next Handler
+}
+
+func (h *BaseHandler) SetNext(handler Handler) Handler {
+	h.next = handler
+	// Returning the handler lets us link calls like:
+	// monkey.SetNext(squirrel).SetNext(dog)
+	return handler
+}
+
+func (h *BaseHandler) Handle(request string) string {
+	if h.next != nil {
+		return h.next.Handle(request)
+	}
+	return ""
+}
+
+type MonkeyHandler struct{ BaseHandler }
+
+func (h *MonkeyHandler) Handle(request string) string {
+	if request == "Banana" {
+		return fmt.Sprintf("Monkey: I'll eat the %s.", request)
+	}
+	return h.BaseHandler.Handle(request)
+}
+
+type SquirrelHandler struct{ BaseHandler }
+
+func (h *SquirrelHandler) Handle(request string) string {
+	if request == "Nut" {
+		return fmt.Sprintf("Squirrel: I'll eat the %s.", request)
+	}
+	return h.BaseHandler.Handle(request)
+}
+
+type DogHandler struct{ BaseHandler }
+
+func (h *DogHandler) Handle(request string) string {
+	if request == "MeatBall" {
+		return fmt.Sprintf("Dog: I'll eat the %s.", request)
+	}
+	return h.BaseHandler.Handle(request)
+}
+
+func clientCode(handler Handler) {
+	for _, food := range []string{"Nut", "Banana", "Cup of coffee"} {
+		fmt.Printf("Client: Who wants a %s?\n", food)
+		if result := handler.Handle(food); result != "" {
+			fmt.Printf("  %s\n", result)
+		} else {
+			fmt.Printf("  %s was left untouched.\n", food)
+		}
+	}
+}
+
+func main() {
+	monkey := &MonkeyHandler{}
+	squirrel := &SquirrelHandler{}
+	dog := &DogHandler{}
+	monkey.SetNext(squirrel).SetNext(dog)
+
+	fmt.Print("Chain: Monkey > Squirrel > Dog\n\n")
+	clientCode(monkey)
+	fmt.Println("")
+	fmt.Print("Subchain: Squirrel > Dog\n\n")
+	clientCode(squirrel)
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+// The Handler interface declares chaining and request-handling methods.
+class Handler {
+public:
+    virtual ~Handler() = default;
+    virtual Handler* SetNext(Handler* handler) = 0;
+    virtual std::string Handle(const std::string& request) = 0;
+};
+
+// The default chaining behavior lives in a base handler class.
+class AbstractHandler : public Handler {
+    Handler* next_handler_ = nullptr;
+
+public:
+    Handler* SetNext(Handler* handler) override {
+        next_handler_ = handler;
+        // Returning the handler lets us link calls like:
+        // monkey->SetNext(squirrel)->SetNext(dog);
+        return handler;
+    }
+
+    std::string Handle(const std::string& request) override {
+        if (next_handler_) return next_handler_->Handle(request);
+        return {};
+    }
+};
+
+class MonkeyHandler : public AbstractHandler {
+public:
+    std::string Handle(const std::string& request) override {
+        if (request == "Banana") return "Monkey: I'll eat the " + request + ".";
+        return AbstractHandler::Handle(request);
+    }
+};
+
+class SquirrelHandler : public AbstractHandler {
+public:
+    std::string Handle(const std::string& request) override {
+        if (request == "Nut") return "Squirrel: I'll eat the " + request + ".";
+        return AbstractHandler::Handle(request);
+    }
+};
+
+class DogHandler : public AbstractHandler {
+public:
+    std::string Handle(const std::string& request) override {
+        if (request == "MeatBall") return "Dog: I'll eat the " + request + ".";
+        return AbstractHandler::Handle(request);
+    }
+};
+
+void ClientCode(Handler& handler) {
+    for (const std::string& food : {"Nut", "Banana", "Cup of coffee"}) {
+        std::cout << "Client: Who wants a " << food << "?\n";
+        std::string result = handler.Handle(food);
+        if (!result.empty())
+            std::cout << "  " << result << "\n";
+        else
+            std::cout << "  " << food << " was left untouched.\n";
+    }
+}
+
+int main() {
+    auto monkey = std::make_unique<MonkeyHandler>();
+    auto squirrel = std::make_unique<SquirrelHandler>();
+    auto dog = std::make_unique<DogHandler>();
+    monkey->SetNext(squirrel.get())->SetNext(dog.get());
+
+    std::cout << "Chain: Monkey > Squirrel > Dog\n\n";
+    ClientCode(*monkey);
+    std::cout << "\n";
+    std::cout << "Subchain: Squirrel > Dog\n\n";
+    ClientCode(*squirrel);
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The Handler trait declares chaining and request-handling methods. The default
+// handle() forwards to the next handler, mirroring the base-class behavior.
+trait Handler {
+    fn set_next(&mut self, next: Box<dyn Handler>);
+    fn next(&self) -> Option<&dyn Handler>;
+
+    fn handle(&self, request: &str) -> Option<String> {
+        self.next().and_then(|h| h.handle(request))
+    }
+}
+
+// A small macro-free helper: each concrete handler stores its successor.
+#[derive(Default)]
+struct Chained {
+    next: Option<Box<dyn Handler>>,
+}
+
+struct MonkeyHandler {
+    base: Chained,
+}
+struct SquirrelHandler {
+    base: Chained,
+}
+struct DogHandler {
+    base: Chained,
+}
+
+macro_rules! impl_link {
+    ($ty:ty) => {
+        fn set_next(&mut self, next: Box<dyn Handler>) {
+            self.base.next = Some(next);
+        }
+        fn next(&self) -> Option<&dyn Handler> {
+            self.base.next.as_deref()
+        }
+    };
+}
+
+impl Handler for MonkeyHandler {
+    impl_link!(MonkeyHandler);
+    fn handle(&self, request: &str) -> Option<String> {
+        if request == "Banana" {
+            return Some(format!("Monkey: I'll eat the {}.", request));
+        }
+        self.next().and_then(|h| h.handle(request))
+    }
+}
+
+impl Handler for SquirrelHandler {
+    impl_link!(SquirrelHandler);
+    fn handle(&self, request: &str) -> Option<String> {
+        if request == "Nut" {
+            return Some(format!("Squirrel: I'll eat the {}.", request));
+        }
+        self.next().and_then(|h| h.handle(request))
+    }
+}
+
+impl Handler for DogHandler {
+    impl_link!(DogHandler);
+    fn handle(&self, request: &str) -> Option<String> {
+        if request == "MeatBall" {
+            return Some(format!("Dog: I'll eat the {}.", request));
+        }
+        self.next().and_then(|h| h.handle(request))
+    }
+}
+
+fn client_code(handler: &dyn Handler) {
+    for food in ["Nut", "Banana", "Cup of coffee"] {
+        println!("Client: Who wants a {}?", food);
+        match handler.handle(food) {
+            Some(result) => println!("  {}", result),
+            None => println!("  {} was left untouched.", food),
+        }
+    }
+}
+
+fn main() {
+    let mut dog = DogHandler { base: Chained::default() };
+    let _ = &mut dog;
+    let mut squirrel = SquirrelHandler { base: Chained::default() };
+    squirrel.set_next(Box::new(dog));
+    let mut monkey = MonkeyHandler { base: Chained::default() };
+    monkey.set_next(Box::new(squirrel));
+
+    println!("Chain: Monkey > Squirrel > Dog\n");
+    client_code(&monkey);
+}
+```
+
 ## Pairs well with
 
 Composite (commonly used together: handlers walk a Composite tree); Command (commands flow through a chain of middleware
@@ -1144,6 +3662,21 @@ reversible operations.
 - You're calling a single method directly with no need for queueing/undo/logging → just call it
 - The action has no state and never needs to be reified → use a function reference
 - You'd be wrapping every UI event in a command class → too granular
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | closures `() => void` in a queue; `{ do, undo }` object literals |
+| Python | callables or `functools.partial` |
+| Java | a `Runnable` / lambda; a record for data-carrying commands |
+| C# | `Action` / `Func` delegates; records for data-carrying commands |
+| Go | `func()` values; a struct with `Do` / `Undo` func fields |
+| C++ | `std::function<void()>` |
+| Rust | `Box<dyn FnOnce()>`, or an enum of commands + `match` (serializable) |
 
 ## TypeScript Example
 
@@ -1271,6 +3804,516 @@ invoker.setOnFinish(new ComplexCommand(receiver, 'Send email', 'Save report'));
 invoker.doSomethingImportant();
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Command(ABC):
+    """Declares a method for executing a command."""
+
+    @abstractmethod
+    def execute(self) -> None:
+        pass
+
+
+class SimpleCommand(Command):
+    """Some commands implement simple operations on their own."""
+
+    def __init__(self, payload: str) -> None:
+        self._payload = payload
+
+    def execute(self) -> None:
+        print(f"SimpleCommand: See, I can do simple things like printing ({self._payload})")
+
+
+class ComplexCommand(Command):
+    """Delegates more complex operations to a receiver object."""
+
+    def __init__(self, receiver: "Receiver", a: str, b: str) -> None:
+        self._receiver = receiver
+        self._a = a
+        self._b = b
+
+    def execute(self) -> None:
+        print("ComplexCommand: Complex stuff should be done by a receiver object.")
+        self._receiver.do_something(self._a)
+        self._receiver.do_something_else(self._b)
+
+
+class Receiver:
+    """Contains the business logic; any class may serve as a receiver."""
+
+    def do_something(self, a: str) -> None:
+        print(f"Receiver: Working on ({a}.)")
+
+    def do_something_else(self, b: str) -> None:
+        print(f"Receiver: Also working on ({b}.)")
+
+
+class Invoker:
+    """Associated with commands; sends requests to them."""
+
+    _on_start: Command = None
+    _on_finish: Command = None
+
+    def set_on_start(self, command: Command) -> None:
+        self._on_start = command
+
+    def set_on_finish(self, command: Command) -> None:
+        self._on_finish = command
+
+    def do_something_important(self) -> None:
+        print("Invoker: Does anybody want something done before I begin?")
+        if isinstance(self._on_start, Command):
+            self._on_start.execute()
+
+        print("Invoker: ...doing something really important...")
+
+        print("Invoker: Does anybody want something done after I finish?")
+        if isinstance(self._on_finish, Command):
+            self._on_finish.execute()
+
+
+if __name__ == "__main__":
+    invoker = Invoker()
+    invoker.set_on_start(SimpleCommand("Say Hi!"))
+    receiver = Receiver()
+    invoker.set_on_finish(ComplexCommand(receiver, "Send email", "Save report"))
+    invoker.do_something_important()
+```
+
+## Java Example
+
+```java
+// The Command interface declares a method for executing a command.
+interface Command {
+    void execute();
+}
+
+// Some commands implement simple operations on their own.
+class SimpleCommand implements Command {
+    private String payload;
+
+    public SimpleCommand(String payload) {
+        this.payload = payload;
+    }
+
+    public void execute() {
+        System.out.println("SimpleCommand: See, I can do simple things like printing (" + payload + ")");
+    }
+}
+
+// Some commands delegate more complex operations to a receiver.
+class ComplexCommand implements Command {
+    private Receiver receiver;
+    private String a;
+    private String b;
+
+    public ComplexCommand(Receiver receiver, String a, String b) {
+        this.receiver = receiver;
+        this.a = a;
+        this.b = b;
+    }
+
+    public void execute() {
+        System.out.println("ComplexCommand: Complex stuff should be done by a receiver object.");
+        receiver.doSomething(a);
+        receiver.doSomethingElse(b);
+    }
+}
+
+// The Receiver contains the business logic; any class may serve as a receiver.
+class Receiver {
+    public void doSomething(String a) {
+        System.out.println("Receiver: Working on (" + a + ".)");
+    }
+
+    public void doSomethingElse(String b) {
+        System.out.println("Receiver: Also working on (" + b + ".)");
+    }
+}
+
+// The Invoker sends requests to a command without depending on concrete classes.
+class Invoker {
+    private Command onStart;
+    private Command onFinish;
+
+    public void setOnStart(Command command) {
+        this.onStart = command;
+    }
+
+    public void setOnFinish(Command command) {
+        this.onFinish = command;
+    }
+
+    public void doSomethingImportant() {
+        System.out.println("Invoker: Does anybody want something done before I begin?");
+        if (onStart != null) {
+            onStart.execute();
+        }
+
+        System.out.println("Invoker: ...doing something really important...");
+
+        System.out.println("Invoker: Does anybody want something done after I finish?");
+        if (onFinish != null) {
+            onFinish.execute();
+        }
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        Invoker invoker = new Invoker();
+        invoker.setOnStart(new SimpleCommand("Say Hi!"));
+        Receiver receiver = new Receiver();
+        invoker.setOnFinish(new ComplexCommand(receiver, "Send email", "Save report"));
+        invoker.doSomethingImportant();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Command interface declares a method for executing a command.
+interface ICommand
+{
+    void Execute();
+}
+
+// Some commands implement simple operations on their own.
+class SimpleCommand : ICommand
+{
+    private string _payload;
+
+    public SimpleCommand(string payload) => _payload = payload;
+
+    public void Execute() =>
+        Console.WriteLine($"SimpleCommand: See, I can do simple things like printing ({_payload})");
+}
+
+// Some commands delegate more complex operations to a receiver.
+class ComplexCommand : ICommand
+{
+    private Receiver _receiver;
+    private string _a;
+    private string _b;
+
+    public ComplexCommand(Receiver receiver, string a, string b)
+    {
+        _receiver = receiver;
+        _a = a;
+        _b = b;
+    }
+
+    public void Execute()
+    {
+        Console.WriteLine("ComplexCommand: Complex stuff should be done by a receiver object.");
+        _receiver.DoSomething(_a);
+        _receiver.DoSomethingElse(_b);
+    }
+}
+
+// The Receiver contains the business logic; any class may serve as a receiver.
+class Receiver
+{
+    public void DoSomething(string a) => Console.WriteLine($"Receiver: Working on ({a}.)");
+
+    public void DoSomethingElse(string b) => Console.WriteLine($"Receiver: Also working on ({b}.)");
+}
+
+// The Invoker sends requests to a command without depending on concrete classes.
+class Invoker
+{
+    private ICommand _onStart;
+    private ICommand _onFinish;
+
+    public void SetOnStart(ICommand command) => _onStart = command;
+
+    public void SetOnFinish(ICommand command) => _onFinish = command;
+
+    public void DoSomethingImportant()
+    {
+        Console.WriteLine("Invoker: Does anybody want something done before I begin?");
+        _onStart?.Execute();
+
+        Console.WriteLine("Invoker: ...doing something really important...");
+
+        Console.WriteLine("Invoker: Does anybody want something done after I finish?");
+        _onFinish?.Execute();
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        var invoker = new Invoker();
+        invoker.SetOnStart(new SimpleCommand("Say Hi!"));
+        var receiver = new Receiver();
+        invoker.SetOnFinish(new ComplexCommand(receiver, "Send email", "Save report"));
+        invoker.DoSomethingImportant();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// The Command interface declares a method for executing a command.
+type Command interface {
+	Execute()
+}
+
+// SimpleCommand implements a simple operation on its own.
+type SimpleCommand struct {
+	payload string
+}
+
+func (c *SimpleCommand) Execute() {
+	fmt.Printf("SimpleCommand: See, I can do simple things like printing (%s)\n", c.payload)
+}
+
+// ComplexCommand delegates more complex operations to a receiver.
+type ComplexCommand struct {
+	receiver *Receiver
+	a, b     string
+}
+
+func (c *ComplexCommand) Execute() {
+	fmt.Println("ComplexCommand: Complex stuff should be done by a receiver object.")
+	c.receiver.DoSomething(c.a)
+	c.receiver.DoSomethingElse(c.b)
+}
+
+// Receiver contains the business logic; any type may serve as a receiver.
+type Receiver struct{}
+
+func (r *Receiver) DoSomething(a string) {
+	fmt.Printf("Receiver: Working on (%s.)\n", a)
+}
+func (r *Receiver) DoSomethingElse(b string) {
+	fmt.Printf("Receiver: Also working on (%s.)\n", b)
+}
+
+// Invoker sends requests to a command without depending on concrete types.
+type Invoker struct {
+	onStart  Command
+	onFinish Command
+}
+
+func (i *Invoker) SetOnStart(c Command)  { i.onStart = c }
+func (i *Invoker) SetOnFinish(c Command) { i.onFinish = c }
+
+func (i *Invoker) DoSomethingImportant() {
+	fmt.Println("Invoker: Does anybody want something done before I begin?")
+	if i.onStart != nil {
+		i.onStart.Execute()
+	}
+
+	fmt.Println("Invoker: ...doing something really important...")
+
+	fmt.Println("Invoker: Does anybody want something done after I finish?")
+	if i.onFinish != nil {
+		i.onFinish.Execute()
+	}
+}
+
+func main() {
+	invoker := &Invoker{}
+	invoker.SetOnStart(&SimpleCommand{payload: "Say Hi!"})
+	receiver := &Receiver{}
+	invoker.SetOnFinish(&ComplexCommand{receiver: receiver, a: "Send email", b: "Save report"})
+	invoker.DoSomethingImportant()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+
+// The Command interface declares a method for executing a command.
+class Command {
+public:
+    virtual ~Command() = default;
+    virtual void Execute() const = 0;
+};
+
+// Some commands implement simple operations on their own.
+class SimpleCommand : public Command {
+    std::string payload_;
+
+public:
+    explicit SimpleCommand(std::string payload) : payload_(std::move(payload)) {}
+
+    void Execute() const override {
+        std::cout << "SimpleCommand: See, I can do simple things like printing ("
+                  << payload_ << ")\n";
+    }
+};
+
+// The Receiver contains the business logic; any class may serve as a receiver.
+class Receiver {
+public:
+    void DoSomething(const std::string& a) {
+        std::cout << "Receiver: Working on (" << a << ".)\n";
+    }
+    void DoSomethingElse(const std::string& b) {
+        std::cout << "Receiver: Also working on (" << b << ".)\n";
+    }
+};
+
+// Some commands delegate more complex operations to a receiver.
+class ComplexCommand : public Command {
+    Receiver* receiver_;
+    std::string a_;
+    std::string b_;
+
+public:
+    ComplexCommand(Receiver* receiver, std::string a, std::string b)
+        : receiver_(receiver), a_(std::move(a)), b_(std::move(b)) {}
+
+    void Execute() const override {
+        std::cout << "ComplexCommand: Complex stuff should be done by a receiver object.\n";
+        receiver_->DoSomething(a_);
+        receiver_->DoSomethingElse(b_);
+    }
+};
+
+// The Invoker sends requests to a command without depending on concrete classes.
+class Invoker {
+    std::unique_ptr<Command> on_start_;
+    std::unique_ptr<Command> on_finish_;
+
+public:
+    void SetOnStart(std::unique_ptr<Command> command) { on_start_ = std::move(command); }
+    void SetOnFinish(std::unique_ptr<Command> command) { on_finish_ = std::move(command); }
+
+    void DoSomethingImportant() {
+        std::cout << "Invoker: Does anybody want something done before I begin?\n";
+        if (on_start_) on_start_->Execute();
+
+        std::cout << "Invoker: ...doing something really important...\n";
+
+        std::cout << "Invoker: Does anybody want something done after I finish?\n";
+        if (on_finish_) on_finish_->Execute();
+    }
+};
+
+int main() {
+    Invoker invoker;
+    invoker.SetOnStart(std::make_unique<SimpleCommand>("Say Hi!"));
+    Receiver receiver;
+    invoker.SetOnFinish(std::make_unique<ComplexCommand>(&receiver, "Send email", "Save report"));
+    invoker.DoSomethingImportant();
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The Command trait declares a method for executing a command.
+trait Command {
+    fn execute(&self);
+}
+
+// Some commands implement simple operations on their own.
+struct SimpleCommand {
+    payload: String,
+}
+
+impl Command for SimpleCommand {
+    fn execute(&self) {
+        println!(
+            "SimpleCommand: See, I can do simple things like printing ({})",
+            self.payload
+        );
+    }
+}
+
+// The Receiver contains the business logic; any type may serve as a receiver.
+struct Receiver;
+
+impl Receiver {
+    fn do_something(&self, a: &str) {
+        println!("Receiver: Working on ({}.)", a);
+    }
+    fn do_something_else(&self, b: &str) {
+        println!("Receiver: Also working on ({}.)", b);
+    }
+}
+
+// Some commands delegate more complex operations to a receiver.
+struct ComplexCommand {
+    receiver: Receiver,
+    a: String,
+    b: String,
+}
+
+impl Command for ComplexCommand {
+    fn execute(&self) {
+        println!("ComplexCommand: Complex stuff should be done by a receiver object.");
+        self.receiver.do_something(&self.a);
+        self.receiver.do_something_else(&self.b);
+    }
+}
+
+// The Invoker sends requests to commands without knowing their concrete types.
+#[derive(Default)]
+struct Invoker {
+    on_start: Option<Box<dyn Command>>,
+    on_finish: Option<Box<dyn Command>>,
+}
+
+impl Invoker {
+    fn set_on_start(&mut self, command: Box<dyn Command>) {
+        self.on_start = Some(command);
+    }
+    fn set_on_finish(&mut self, command: Box<dyn Command>) {
+        self.on_finish = Some(command);
+    }
+
+    fn do_something_important(&self) {
+        println!("Invoker: Does anybody want something done before I begin?");
+        if let Some(command) = &self.on_start {
+            command.execute();
+        }
+
+        println!("Invoker: ...doing something really important...");
+
+        println!("Invoker: Does anybody want something done after I finish?");
+        if let Some(command) = &self.on_finish {
+            command.execute();
+        }
+    }
+}
+
+fn main() {
+    let mut invoker = Invoker::default();
+    invoker.set_on_start(Box::new(SimpleCommand {
+        payload: String::from("Say Hi!"),
+    }));
+    invoker.set_on_finish(Box::new(ComplexCommand {
+        receiver: Receiver,
+        a: String::from("Send email"),
+        b: String::from("Save report"),
+    }));
+    invoker.do_something_important();
+}
+```
+
 ## Pairs well with
 
 Memento (Command + Memento = undo/redo); Composite (macro commands composed of sub-commands); Chain of Responsibility (
@@ -1310,6 +4353,21 @@ structures as if they were individual objects.
 - The hierarchy is one or two levels deep → flat array is enough
 - Leaves and composites have nothing meaningful in common → forcing a shared interface hurts clarity
 - A simple recursive function over a plain object tree would suffice
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a recursive type `type Node = Leaf | { children: Node[] }` + one recursive function |
+| Python | nested dataclasses with a `children` list + a recursive function |
+| Java | a sealed interface + records + one recursive method |
+| C# | records + recursion with pattern matching |
+| Go | a struct with `Children []*Node` |
+| C++ | `std::variant` nodes with `std::vector` children + a recursive visit |
+| Rust | `enum Node { Leaf(..), Branch(Vec<Node>) }` + a recursive `match` |
 
 ## TypeScript Example
 
@@ -1437,10 +4495,827 @@ console.log('Client: Now I\'ve got a composite tree:');
 clientCode(tree);
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from typing import List, Optional
+
+
+class Component(ABC):
+    """The base Component declares common operations for both simple and complex
+    objects of a composition."""
+
+    @property
+    def parent(self) -> Optional[Component]:
+        return self._parent
+
+    @parent.setter
+    def parent(self, parent: Optional[Component]) -> None:
+        self._parent = parent
+
+    def add(self, component: Component) -> None:
+        pass
+
+    def remove(self, component: Component) -> None:
+        pass
+
+    def is_composite(self) -> bool:
+        return False
+
+    @abstractmethod
+    def operation(self) -> str:
+        pass
+
+
+class Leaf(Component):
+    """The Leaf represents the end objects of a composition; it can't have
+    children and usually does the actual work."""
+
+    def operation(self) -> str:
+        return "Leaf"
+
+
+class Composite(Component):
+    """The Composite represents complex components that may have children,
+    delegating the actual work to them and summing up the result."""
+
+    def __init__(self) -> None:
+        self._children: List[Component] = []
+
+    def add(self, component: Component) -> None:
+        self._children.append(component)
+        component.parent = self
+
+    def remove(self, component: Component) -> None:
+        self._children.remove(component)
+        component.parent = None
+
+    def is_composite(self) -> bool:
+        return True
+
+    def operation(self) -> str:
+        results = [child.operation() for child in self._children]
+        return f"Branch({'+'.join(results)})"
+
+
+def client_code(component: Component) -> None:
+    print(f"RESULT: {component.operation()}")
+
+
+if __name__ == "__main__":
+    simple = Leaf()
+    print("Client: I've got a simple component:")
+    client_code(simple)
+    print()
+
+    tree = Composite()
+    branch1 = Composite()
+    branch1.add(Leaf())
+    branch1.add(Leaf())
+    branch2 = Composite()
+    branch2.add(Leaf())
+    tree.add(branch1)
+    tree.add(branch2)
+    print("Client: Now I've got a composite tree:")
+    client_code(tree)
+```
+
+## Java Example
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+import java.util.StringJoiner;
+
+// The base Component declares common operations for simple and complex objects.
+abstract class Component {
+    protected Component parent;
+
+    public void setParent(Component parent) { this.parent = parent; }
+    public Component getParent() { return parent; }
+
+    public void add(Component component) {}
+    public void remove(Component component) {}
+    public boolean isComposite() { return false; }
+
+    public abstract String operation();
+}
+
+// The Leaf represents the end objects; it can't have children and does the work.
+class Leaf extends Component {
+    public String operation() {
+        return "Leaf";
+    }
+}
+
+// The Composite represents complex components that may have children,
+// delegating the actual work to them and summing up the result.
+class Composite extends Component {
+    protected List<Component> children = new ArrayList<>();
+
+    public void add(Component component) {
+        children.add(component);
+        component.setParent(this);
+    }
+
+    public void remove(Component component) {
+        children.remove(component);
+        component.setParent(null);
+    }
+
+    public boolean isComposite() { return true; }
+
+    public String operation() {
+        StringJoiner joiner = new StringJoiner("+");
+        for (Component child : children) {
+            joiner.add(child.operation());
+        }
+        return "Branch(" + joiner + ")";
+    }
+}
+
+public class Demo {
+    static void clientCode(Component component) {
+        System.out.println("RESULT: " + component.operation());
+    }
+
+    public static void main(String[] args) {
+        Component simple = new Leaf();
+        System.out.println("Client: I've got a simple component:");
+        clientCode(simple);
+        System.out.println();
+
+        Composite tree = new Composite();
+        Composite branch1 = new Composite();
+        branch1.add(new Leaf());
+        branch1.add(new Leaf());
+        Composite branch2 = new Composite();
+        branch2.add(new Leaf());
+        tree.add(branch1);
+        tree.add(branch2);
+        System.out.println("Client: Now I've got a composite tree:");
+        clientCode(tree);
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+// The base Component declares common operations for simple and complex objects.
+abstract class Component
+{
+    public Component Parent { get; set; }
+
+    public virtual void Add(Component component) { }
+    public virtual void Remove(Component component) { }
+    public virtual bool IsComposite() => false;
+
+    public abstract string Operation();
+}
+
+// The Leaf represents the end objects; it can't have children and does the work.
+class Leaf : Component
+{
+    public override string Operation() => "Leaf";
+}
+
+// The Composite represents complex components that may have children,
+// delegating the actual work to them and summing up the result.
+class Composite : Component
+{
+    protected List<Component> children = new List<Component>();
+
+    public override void Add(Component component)
+    {
+        children.Add(component);
+        component.Parent = this;
+    }
+
+    public override void Remove(Component component)
+    {
+        children.Remove(component);
+        component.Parent = null;
+    }
+
+    public override bool IsComposite() => true;
+
+    public override string Operation()
+    {
+        var results = new List<string>();
+        foreach (var child in children)
+            results.Add(child.Operation());
+        return $"Branch({string.Join("+", results)})";
+    }
+}
+
+class Program
+{
+    static void ClientCode(Component component)
+    {
+        Console.WriteLine($"RESULT: {component.Operation()}");
+    }
+
+    static void Main(string[] args)
+    {
+        Component simple = new Leaf();
+        Console.WriteLine("Client: I've got a simple component:");
+        ClientCode(simple);
+        Console.WriteLine();
+
+        Composite tree = new Composite();
+        Composite branch1 = new Composite();
+        branch1.Add(new Leaf());
+        branch1.Add(new Leaf());
+        Composite branch2 = new Composite();
+        branch2.Add(new Leaf());
+        tree.Add(branch1);
+        tree.Add(branch2);
+        Console.WriteLine("Client: Now I've got a composite tree:");
+        ClientCode(tree);
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Component declares common operations for simple and complex objects.
+type Component interface {
+	Operation() string
+	Add(component Component)
+	IsComposite() bool
+}
+
+// Leaf represents the end objects; it can't have children and does the work.
+type Leaf struct{}
+
+func (l *Leaf) Operation() string      { return "Leaf" }
+func (l *Leaf) Add(component Component) {}
+func (l *Leaf) IsComposite() bool      { return false }
+
+// Composite represents complex components that may have children, delegating
+// the actual work to them and summing up the result.
+type Composite struct {
+	children []Component
+}
+
+func (c *Composite) Add(component Component) {
+	c.children = append(c.children, component)
+}
+
+func (c *Composite) IsComposite() bool { return true }
+
+func (c *Composite) Operation() string {
+	results := make([]string, 0, len(c.children))
+	for _, child := range c.children {
+		results = append(results, child.Operation())
+	}
+	return fmt.Sprintf("Branch(%s)", strings.Join(results, "+"))
+}
+
+func clientCode(component Component) {
+	fmt.Printf("RESULT: %s\n", component.Operation())
+}
+
+func main() {
+	simple := &Leaf{}
+	fmt.Println("Client: I've got a simple component:")
+	clientCode(simple)
+	fmt.Println()
+
+	tree := &Composite{}
+	branch1 := &Composite{}
+	branch1.Add(&Leaf{})
+	branch1.Add(&Leaf{})
+	branch2 := &Composite{}
+	branch2.Add(&Leaf{})
+	tree.Add(branch1)
+	tree.Add(branch2)
+	fmt.Println("Client: Now I've got a composite tree:")
+	clientCode(tree)
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+// The base Component declares common operations for simple and complex objects.
+class Component {
+public:
+    virtual ~Component() = default;
+    virtual void Add(std::shared_ptr<Component> component) {}
+    virtual bool IsComposite() const { return false; }
+    virtual std::string Operation() const = 0;
+};
+
+// The Leaf represents the end objects; it can't have children and does the work.
+class Leaf : public Component {
+public:
+    std::string Operation() const override { return "Leaf"; }
+};
+
+// The Composite represents complex components that may have children,
+// delegating the actual work to them and summing up the result.
+class Composite : public Component {
+protected:
+    std::vector<std::shared_ptr<Component>> children_;
+
+public:
+    void Add(std::shared_ptr<Component> component) override {
+        children_.push_back(std::move(component));
+    }
+
+    bool IsComposite() const override { return true; }
+
+    std::string Operation() const override {
+        std::string result;
+        for (size_t i = 0; i < children_.size(); ++i) {
+            if (i > 0) result += "+";
+            result += children_[i]->Operation();
+        }
+        return "Branch(" + result + ")";
+    }
+};
+
+void ClientCode(const std::shared_ptr<Component>& component) {
+    std::cout << "RESULT: " << component->Operation() << "\n";
+}
+
+int main() {
+    auto simple = std::make_shared<Leaf>();
+    std::cout << "Client: I've got a simple component:\n";
+    ClientCode(simple);
+    std::cout << "\n";
+
+    auto tree = std::make_shared<Composite>();
+    auto branch1 = std::make_shared<Composite>();
+    branch1->Add(std::make_shared<Leaf>());
+    branch1->Add(std::make_shared<Leaf>());
+    auto branch2 = std::make_shared<Composite>();
+    branch2->Add(std::make_shared<Leaf>());
+    tree->Add(branch1);
+    tree->Add(branch2);
+    std::cout << "Client: Now I've got a composite tree:\n";
+    ClientCode(tree);
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The base Component trait declares common operations for simple and complex
+// objects of a composition.
+trait Component {
+    fn operation(&self) -> String;
+    fn add(&mut self, _component: Box<dyn Component>) {}
+    fn is_composite(&self) -> bool {
+        false
+    }
+}
+
+// The Leaf represents the end objects; it can't have children and does the work.
+struct Leaf;
+
+impl Component for Leaf {
+    fn operation(&self) -> String {
+        "Leaf".to_string()
+    }
+}
+
+// The Composite represents complex components that may have children, delegating
+// the actual work to them and summing up the result.
+struct Composite {
+    children: Vec<Box<dyn Component>>,
+}
+
+impl Composite {
+    fn new() -> Self {
+        Composite { children: Vec::new() }
+    }
+}
+
+impl Component for Composite {
+    fn add(&mut self, component: Box<dyn Component>) {
+        self.children.push(component);
+    }
+
+    fn is_composite(&self) -> bool {
+        true
+    }
+
+    fn operation(&self) -> String {
+        let results: Vec<String> = self.children.iter().map(|c| c.operation()).collect();
+        format!("Branch({})", results.join("+"))
+    }
+}
+
+fn client_code(component: &dyn Component) {
+    println!("RESULT: {}", component.operation());
+}
+
+fn main() {
+    let simple = Leaf;
+    println!("Client: I've got a simple component:");
+    client_code(&simple);
+    println!();
+
+    let mut tree = Composite::new();
+    let mut branch1 = Composite::new();
+    branch1.add(Box::new(Leaf));
+    branch1.add(Box::new(Leaf));
+    let mut branch2 = Composite::new();
+    branch2.add(Box::new(Leaf));
+    tree.add(Box::new(branch1));
+    tree.add(Box::new(branch2));
+    println!("Client: Now I've got a composite tree:");
+    client_code(&tree);
+}
+```
+
 ## Pairs well with
 
 Iterator (Iterator walks the Composite); Visitor (Visitor performs operations across the whole tree); Decorator (both
 share the recursive wrapping shape).
+
+---
+
+<a id="control-flow"></a>
+
+# Control Flow Rules
+
+Four rules, applied **before** any GoF pattern. Most conditional mess is fixed
+by one of these, with no new types.
+
+| Rule | Smell id (hook) | Default |
+|---|---|---|
+| R1 No nested `if`, guard clauses first | `nested-if` | on |
+| R2 Max control-flow depth 2 | `deep-nesting` | `maxNestingDepth: 2` |
+| R3 No `else` after an exit | `else-after-return` | on |
+| R4 N+1 branches: escalate a growing conditional | `conditional-ladder`, `scattered-discriminator` | 3 branches / 3 sites |
+| R5 N+1 queries: no I/O per loop item | `n-plus-one` | on |
+
+The smell detector reports these only on lines the current Edit touched
+(`smells.controlFlowScope: "edited"`), so legacy code elsewhere in the file
+stays quiet. Suppress one site with `// pattern-smell: ignore <smell-id>`
+(`#` in Python) on the line or the line above.
+
+---
+
+## R1 — No nested `if`: guard clauses first
+
+An `if` directly inside another `if` (or inside a bare `else`) is not allowed.
+Fix it one of these ways, in this order:
+
+1. **Guard clause.** Invert the outer condition, exit early (`return`,
+   `throw`, `continue`), then write the main path unindented.
+2. **Merge.** Two conditions that only guard one action become one condition,
+   or a named predicate when the result is hard to read.
+3. **`else if` / `elif`.** An `if` as the only statement of an `else` block
+   becomes `else if`.
+4. **Extract.** The inner block becomes its own function, which then uses
+   guard clauses itself.
+
+A compound condition with more than 2 terms goes into a named predicate:
+`if (isEligible(user))`, not `if (user.age > 18 && user.verified && !user.banned)`.
+
+Repeated null checks down a chain (`if (a) { if (a.b) { if (a.b.c)`) call for
+optional chaining (`a?.b?.c`), `Optional` / `Option`, or a **Null Object**
+(see `extras.md`).
+
+## R2 — Max control-flow depth 2
+
+Count `if` / `else`, loops, `switch` / `match`, and `try` / `catch` blocks on
+the path from the function body. A `for` containing an `if` is depth 2 and
+fine. A third level means the function does too much: extract the inner
+block, or switch to guard clauses and `continue`. Scope-only blocks don't
+count: `with`, `using`, `lock`, `synchronized`, `unsafe`.
+
+## R3 — No `else` after an exit
+
+When a branch ends in `return` / `throw` / `raise` / `continue` / `break`,
+the `else` is noise. Drop it and dedent its body. Python's `for … else` /
+`while … else` are loop constructs and are exempt.
+
+### R1–R3 before / after
+
+**TypeScript**
+
+```typescript
+// before — depth 3, nested if, else after return
+function ship(order: Order) {
+  if (order) {
+    if (order.paid) {
+      if (order.items.length > 0) {
+        return dispatch(order);
+      } else {
+        return reject('empty');
+      }
+    }
+  }
+  return reject('unpaid');
+}
+
+// after — guard clauses, depth 1
+function ship(order: Order) {
+  if (!order?.paid) return reject('unpaid');
+  if (order.items.length === 0) return reject('empty');
+  return dispatch(order);
+}
+```
+
+**Python**
+
+```python
+def ship(order):
+    if not order or not order.paid:
+        return reject("unpaid")
+    if not order.items:
+        return reject("empty")
+    return dispatch(order)
+```
+
+**Java**
+
+```java
+Result ship(Order order) {
+    if (order == null || !order.isPaid()) return Result.reject("unpaid");
+    if (order.items().isEmpty()) return Result.reject("empty");
+    return dispatch(order);
+}
+```
+
+**C#**
+
+```csharp
+Result Ship(Order? order)
+{
+    if (order is not { Paid: true }) return Result.Reject("unpaid");
+    if (order.Items.Count == 0) return Result.Reject("empty");
+    return Dispatch(order);
+}
+```
+
+**Go** (early return is already idiomatic Go; keep the happy path unindented)
+
+```go
+func Ship(o *Order) error {
+	if o == nil || !o.Paid {
+		return ErrUnpaid
+	}
+	if len(o.Items) == 0 {
+		return ErrEmpty
+	}
+	return dispatch(o)
+}
+```
+
+**C++**
+
+```cpp
+Result ship(const Order* order) {
+    if (!order || !order->paid) return Result::reject("unpaid");
+    if (order->items.empty()) return Result::reject("empty");
+    return dispatch(*order);
+}
+```
+
+**Rust** (`let … else` and `?` are guard clauses)
+
+```rust
+fn ship(order: Option<&Order>) -> Result<Receipt, ShipError> {
+    let Some(order) = order.filter(|o| o.paid) else {
+        return Err(ShipError::Unpaid);
+    };
+    if order.items.is_empty() {
+        return Err(ShipError::Empty);
+    }
+    dispatch(order)
+}
+```
+
+Loops: use `continue` as the guard.
+
+```python
+for user in users:
+    if not user.active:
+        continue
+    if user.email is None:
+        continue
+    notify(user)
+```
+
+---
+
+## R4 — N+1 branches: escalate a growing conditional
+
+A conditional that picks *behavior* by a discriminator (`kind`, `type`,
+`status`, `role`, `provider`…) climbs a fixed ladder. When you are about to
+add branch N+1, check the rung first. Refactor before adding the branch, not
+after.
+
+| Rung | Shape | Move up when |
+|---|---|---|
+| 1 | `if` / `else` (≤ 2 branches) | a 3rd branch arrives |
+| 2 | **Dispatch map** — `Record<Kind, Fn>` / `dict` / `Map<K, Supplier>` / `map[K]func` / `match` on a closed enum | branches need more than one operation each, or carry state |
+| 3 | **Strategy** (varies the algorithm) or **State** (varies by lifecycle state, with transitions) | — |
+
+Two more triggers skip straight to rung 2 or 3:
+
+- **Same discriminator, third site.** The same `x.status == …` check
+  appearing at a *third* site (N+1 over the 2 you can tolerate) means the
+  knowledge is scattered. Centralize it: a map, polymorphic
+  method, or State object that owns the per-variant decision.
+- **Variants will keep coming.** Integrations, payment providers, file
+  formats, message types. Use rung 2 or 3 from the start.
+
+Exhaustive `switch` / `match` over a **closed** union (TS `never` check,
+Java sealed + pattern switch, Rust `enum` + `match`, C# switch expression
+with a discard throw) is a legitimate rung-2 form: the compiler lists every
+site to update when a variant is added. The hooks skip switches marked with
+`assertNever` / `: never` / `unreachable`, and Rust `match` entirely.
+
+Before adding an `if` / `else if` / `switch` branch, ask:
+
+1. Does each branch represent a different *behavior*, not just a value?
+2. Will more variants likely be added?
+3. Is the same condition checked elsewhere?
+4. Would a dispatch map, polymorphic type, State, or Command make it clearer?
+
+Any "yes" → move up a rung instead of adding the branch.
+
+### Dispatch map in each language
+
+```typescript
+const handlers: Record<Kind, (e: Event) => void> = {
+  created: onCreated,
+  paid: onPaid,
+  shipped: onShipped,
+};
+handlers[event.kind](event);
+```
+
+```python
+HANDLERS: dict[Kind, Callable[[Event], None]] = {
+    Kind.CREATED: on_created,
+    Kind.PAID: on_paid,
+    Kind.SHIPPED: on_shipped,
+}
+HANDLERS[event.kind](event)
+```
+
+```java
+private static final Map<Kind, Consumer<Event>> HANDLERS = Map.of(
+    Kind.CREATED, Handlers::onCreated,
+    Kind.PAID, Handlers::onPaid,
+    Kind.SHIPPED, Handlers::onShipped);
+HANDLERS.get(event.kind()).accept(event);
+```
+
+```csharp
+private static readonly Dictionary<Kind, Action<Event>> Handlers = new()
+{
+    [Kind.Created] = OnCreated,
+    [Kind.Paid] = OnPaid,
+    [Kind.Shipped] = OnShipped,
+};
+Handlers[evt.Kind](evt);
+```
+
+```go
+var handlers = map[Kind]func(Event){
+	KindCreated: onCreated,
+	KindPaid:    onPaid,
+	KindShipped: onShipped,
+}
+handlers[e.Kind](e)
+```
+
+```cpp
+static const std::unordered_map<Kind, void (*)(const Event&)> handlers{
+    {Kind::Created, onCreated},
+    {Kind::Paid, onPaid},
+    {Kind::Shipped, onShipped},
+};
+handlers.at(e.kind)(e);
+```
+
+```rust
+// a closed enum + match IS the dispatch map in Rust: exhaustive, zero-cost
+match event.kind {
+    Kind::Created => on_created(&event),
+    Kind::Paid => on_paid(&event),
+    Kind::Shipped => on_shipped(&event),
+}
+```
+
+Handle the missing key explicitly (`?? fallback`, `.get(k, default)`,
+`getOrDefault`, `TryGetValue`, `, ok`) unless the key type is a closed enum.
+
+---
+
+## R5 — N+1 queries: no I/O per loop item
+
+One query to load N parents, then one query per parent for its children, is
+N+1 round-trips. The same goes for HTTP calls, cache lookups over the network,
+and sequential `await` in a loop. Load the whole set in one call, or run the
+independent calls concurrently.
+
+| Instead of (inside the loop) | Do |
+|---|---|
+| `repo.findById(id)` per id | `findAllById(ids)` / `WHERE id IN (…)` / `= ANY($1)` |
+| lazy relation access (`order.customer.name`) | eager load: SQLAlchemy `selectinload` / `joinedload`, Django `select_related` / `prefetch_related`, JPA `JOIN FETCH` / `@EntityGraph`, EF Core `.Include()`, Prisma `include`, TypeORM `relations`, GORM `Preload` |
+| per-row `save()` / `insert` | bulk insert / `saveAll` / `executemany` / `bulk_create` / `AddRange` + one `SaveChanges` / `COPY` |
+| `fetch(url)` per item | a bulk endpoint; else bounded concurrency |
+| per-field resolver queries (GraphQL) | DataLoader (batch + per-request cache) |
+| `await x` per item, items independent | `Promise.all` / `asyncio.gather` / `Task.WhenAll` / `errgroup` / `join_all`, bounded by a semaphore or `p-limit` |
+
+**TypeScript**
+
+```typescript
+// before — N+1
+for (const order of orders) {
+  order.customer = await db.customer.findUnique({ where: { id: order.customerId } });
+}
+
+// after — 1 query + in-memory join
+const ids = [...new Set(orders.map(o => o.customerId))];
+const customers = await db.customer.findMany({ where: { id: { in: ids } } });
+const byId = new Map(customers.map(c => [c.id, c]));
+for (const order of orders) order.customer = byId.get(order.customerId);
+```
+
+**Python (Django / SQLAlchemy)**
+
+```python
+orders = Order.objects.select_related("customer")          # FK: one JOIN
+orders = Order.objects.prefetch_related("items")           # reverse/M2M: 2 queries total
+stmt = select(Order).options(selectinload(Order.items))    # SQLAlchemy
+```
+
+**Java (JPA)**
+
+```java
+@Query("select o from Order o join fetch o.customer where o.id in :ids")
+List<Order> findWithCustomer(@Param("ids") Collection<Long> ids);
+```
+
+**C# (EF Core)**
+
+```csharp
+var orders = await db.Orders
+    .Include(o => o.Customer)
+    .Where(o => ids.Contains(o.Id))
+    .ToListAsync();
+```
+
+**Go**
+
+```go
+rows, err := db.QueryContext(ctx,
+	`SELECT id, name FROM customers WHERE id = ANY($1)`, pq.Array(ids))
+```
+
+**C++**
+
+```cpp
+// build one parameterized IN (...) / = ANY($1) statement; never execute per element
+auto rows = conn.exec_params("SELECT id, name FROM customers WHERE id = ANY($1)", ids);
+```
+
+**Rust (sqlx)**
+
+```rust
+let customers = sqlx::query_as!(Customer,
+    "SELECT id, name FROM customers WHERE id = ANY($1)", &ids[..])
+    .fetch_all(&pool).await?;
+```
+
+Legitimate loops with I/O inside: cursor pagination (`while (next) { page =
+await fetch(next) }`), rate-limited APIs that forbid concurrency, and
+order-dependent writes. Suppress with a reason:
+`// pattern-smell: ignore n-plus-one — cursor pagination, next page depends on previous`.
+
+Project-specific I/O calls (an internal SDK, a custom repository base) go in
+`smells.nPlusOne.extraCallPatterns` as regex sources.
 
 ---
 
@@ -1478,6 +5353,21 @@ special wrapper objects that contain the behaviors.
 - Behavior is fixed and known at compile time → just use inheritance or composition
 - Higher-order functions or middleware patterns already solve it (e.g. Redux/Zustand middleware)
 - Only one wrapper layer is needed → just call the wrapper function directly
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a higher-order function `withRetry(fn)`, or middleware |
+| Python | a `@decorator` function (with `functools.wraps`) |
+| Java | a wrapper implementing the same interface; `Function.andThen` for plain functions |
+| C# | a wrapper registered via DI decoration; delegate composition |
+| Go | middleware of shape `func(http.Handler) http.Handler` |
+| C++ | a wrapping lambda, or a template wrapper |
+| Rust | a wrapper struct implementing the same trait (tower `Layer` style) |
 
 ## TypeScript Example
 
@@ -1570,9 +5460,590 @@ console.log('Client: Now I\'ve got a decorated component:');
 clientCode(decorator2);
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Component(ABC):
+    """The base Component interface defines operations that can be altered by
+    decorators."""
+
+    @abstractmethod
+    def operation(self) -> str:
+        pass
+
+
+class ConcreteComponent(Component):
+    """Concrete Components provide default implementations of the operations."""
+
+    def operation(self) -> str:
+        return "ConcreteComponent"
+
+
+class Decorator(Component):
+    """The base Decorator follows the same interface as the other components and
+    stores a reference to a wrapped component, delegating all work to it."""
+
+    def __init__(self, component: Component) -> None:
+        self._component = component
+
+    def operation(self) -> str:
+        return self._component.operation()
+
+
+class ConcreteDecoratorA(Decorator):
+    """Concrete Decorators call the wrapped object and alter its result."""
+
+    def operation(self) -> str:
+        return f"ConcreteDecoratorA({self._component.operation()})"
+
+
+class ConcreteDecoratorB(Decorator):
+    """Decorators can execute their behavior before or after the wrapped call."""
+
+    def operation(self) -> str:
+        return f"ConcreteDecoratorB({self._component.operation()})"
+
+
+def client_code(component: Component) -> None:
+    """The client works with all objects using the Component interface."""
+    print(f"RESULT: {component.operation()}")
+
+
+if __name__ == "__main__":
+    simple = ConcreteComponent()
+    print("Client: I've got a simple component:")
+    client_code(simple)
+    print()
+
+    # Note how decorators can wrap not only simple components but decorators too.
+    decorator1 = ConcreteDecoratorA(simple)
+    decorator2 = ConcreteDecoratorB(decorator1)
+    print("Client: Now I've got a decorated component:")
+    client_code(decorator2)
+```
+
+## Java Example
+
+```java
+// The base Component interface defines operations that can be altered.
+interface Component {
+    String operation();
+}
+
+// Concrete Components provide default implementations of the operations.
+class ConcreteComponent implements Component {
+    public String operation() {
+        return "ConcreteComponent";
+    }
+}
+
+// The base Decorator follows the same interface and stores a wrapped component,
+// delegating all work to it.
+class Decorator implements Component {
+    protected Component component;
+
+    public Decorator(Component component) {
+        this.component = component;
+    }
+
+    public String operation() {
+        return component.operation();
+    }
+}
+
+// Concrete Decorators call the wrapped object and alter its result.
+class ConcreteDecoratorA extends Decorator {
+    public ConcreteDecoratorA(Component component) {
+        super(component);
+    }
+
+    public String operation() {
+        return "ConcreteDecoratorA(" + super.operation() + ")";
+    }
+}
+
+// Decorators can execute their behavior before or after the wrapped call.
+class ConcreteDecoratorB extends Decorator {
+    public ConcreteDecoratorB(Component component) {
+        super(component);
+    }
+
+    public String operation() {
+        return "ConcreteDecoratorB(" + super.operation() + ")";
+    }
+}
+
+public class Demo {
+    // The client works with all objects using the Component interface.
+    static void clientCode(Component component) {
+        System.out.println("RESULT: " + component.operation());
+    }
+
+    public static void main(String[] args) {
+        Component simple = new ConcreteComponent();
+        System.out.println("Client: I've got a simple component:");
+        clientCode(simple);
+        System.out.println();
+
+        Component decorator1 = new ConcreteDecoratorA(simple);
+        Component decorator2 = new ConcreteDecoratorB(decorator1);
+        System.out.println("Client: Now I've got a decorated component:");
+        clientCode(decorator2);
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The base Component interface defines operations that can be altered.
+abstract class Component
+{
+    public abstract string Operation();
+}
+
+// Concrete Components provide default implementations of the operations.
+class ConcreteComponent : Component
+{
+    public override string Operation() => "ConcreteComponent";
+}
+
+// The base Decorator follows the same interface and stores a wrapped component,
+// delegating all work to it.
+abstract class Decorator : Component
+{
+    protected Component component;
+
+    public Decorator(Component component)
+    {
+        this.component = component;
+    }
+
+    public override string Operation() => component.Operation();
+}
+
+// Concrete Decorators call the wrapped object and alter its result.
+class ConcreteDecoratorA : Decorator
+{
+    public ConcreteDecoratorA(Component component) : base(component) { }
+
+    public override string Operation() => $"ConcreteDecoratorA({base.Operation()})";
+}
+
+// Decorators can execute their behavior before or after the wrapped call.
+class ConcreteDecoratorB : Decorator
+{
+    public ConcreteDecoratorB(Component component) : base(component) { }
+
+    public override string Operation() => $"ConcreteDecoratorB({base.Operation()})";
+}
+
+class Program
+{
+    // The client works with all objects using the Component interface.
+    static void ClientCode(Component component)
+    {
+        Console.WriteLine($"RESULT: {component.Operation()}");
+    }
+
+    static void Main(string[] args)
+    {
+        Component simple = new ConcreteComponent();
+        Console.WriteLine("Client: I've got a simple component:");
+        ClientCode(simple);
+        Console.WriteLine();
+
+        Component decorator1 = new ConcreteDecoratorA(simple);
+        Component decorator2 = new ConcreteDecoratorB(decorator1);
+        Console.WriteLine("Client: Now I've got a decorated component:");
+        ClientCode(decorator2);
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Component defines operations that can be altered by decorators.
+type Component interface {
+	Operation() string
+}
+
+// ConcreteComponent provides a default implementation of the operations.
+type ConcreteComponent struct{}
+
+func (c *ConcreteComponent) Operation() string {
+	return "ConcreteComponent"
+}
+
+// ConcreteDecoratorA wraps a component and alters its result.
+type ConcreteDecoratorA struct {
+	component Component
+}
+
+func (d *ConcreteDecoratorA) Operation() string {
+	return fmt.Sprintf("ConcreteDecoratorA(%s)", d.component.Operation())
+}
+
+// ConcreteDecoratorB can execute its behavior before or after the wrapped call.
+type ConcreteDecoratorB struct {
+	component Component
+}
+
+func (d *ConcreteDecoratorB) Operation() string {
+	return fmt.Sprintf("ConcreteDecoratorB(%s)", d.component.Operation())
+}
+
+// clientCode works with all objects using the Component interface.
+func clientCode(component Component) {
+	fmt.Printf("RESULT: %s\n", component.Operation())
+}
+
+func main() {
+	simple := &ConcreteComponent{}
+	fmt.Println("Client: I've got a simple component:")
+	clientCode(simple)
+	fmt.Println()
+
+	// Decorators can wrap not only simple components but decorators too.
+	decorator1 := &ConcreteDecoratorA{component: simple}
+	decorator2 := &ConcreteDecoratorB{component: decorator1}
+	fmt.Println("Client: Now I've got a decorated component:")
+	clientCode(decorator2)
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+
+// The base Component interface defines operations that can be altered.
+class Component {
+public:
+    virtual ~Component() = default;
+    virtual std::string Operation() const = 0;
+};
+
+// Concrete Components provide default implementations of the operations.
+class ConcreteComponent : public Component {
+public:
+    std::string Operation() const override { return "ConcreteComponent"; }
+};
+
+// The base Decorator follows the same interface and stores a wrapped component,
+// delegating all work to it.
+class Decorator : public Component {
+protected:
+    std::shared_ptr<Component> component_;
+
+public:
+    explicit Decorator(std::shared_ptr<Component> component)
+        : component_(std::move(component)) {}
+
+    std::string Operation() const override { return component_->Operation(); }
+};
+
+// Concrete Decorators call the wrapped object and alter its result.
+class ConcreteDecoratorA : public Decorator {
+public:
+    using Decorator::Decorator;
+    std::string Operation() const override {
+        return "ConcreteDecoratorA(" + Decorator::Operation() + ")";
+    }
+};
+
+// Decorators can execute their behavior before or after the wrapped call.
+class ConcreteDecoratorB : public Decorator {
+public:
+    using Decorator::Decorator;
+    std::string Operation() const override {
+        return "ConcreteDecoratorB(" + Decorator::Operation() + ")";
+    }
+};
+
+// The client works with all objects using the Component interface.
+void ClientCode(const std::shared_ptr<Component>& component) {
+    std::cout << "RESULT: " << component->Operation() << "\n";
+}
+
+int main() {
+    auto simple = std::make_shared<ConcreteComponent>();
+    std::cout << "Client: I've got a simple component:\n";
+    ClientCode(simple);
+    std::cout << "\n";
+
+    auto decorator1 = std::make_shared<ConcreteDecoratorA>(simple);
+    auto decorator2 = std::make_shared<ConcreteDecoratorB>(decorator1);
+    std::cout << "Client: Now I've got a decorated component:\n";
+    ClientCode(decorator2);
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The base Component trait defines operations that can be altered by decorators.
+trait Component {
+    fn operation(&self) -> String;
+}
+
+// Concrete Components provide default implementations of the operations.
+struct ConcreteComponent;
+
+impl Component for ConcreteComponent {
+    fn operation(&self) -> String {
+        "ConcreteComponent".to_string()
+    }
+}
+
+// Concrete Decorators wrap a component and alter its result.
+struct ConcreteDecoratorA {
+    component: Box<dyn Component>,
+}
+
+impl Component for ConcreteDecoratorA {
+    fn operation(&self) -> String {
+        format!("ConcreteDecoratorA({})", self.component.operation())
+    }
+}
+
+// Decorators can execute their behavior before or after the wrapped call.
+struct ConcreteDecoratorB {
+    component: Box<dyn Component>,
+}
+
+impl Component for ConcreteDecoratorB {
+    fn operation(&self) -> String {
+        format!("ConcreteDecoratorB({})", self.component.operation())
+    }
+}
+
+// The client works with all objects using the Component trait.
+fn client_code(component: &dyn Component) {
+    println!("RESULT: {}", component.operation());
+}
+
+fn main() {
+    let simple = ConcreteComponent;
+    println!("Client: I've got a simple component:");
+    client_code(&simple);
+    println!();
+
+    // Decorators can wrap not only simple components but decorators too.
+    let decorator1 = ConcreteDecoratorA { component: Box::new(ConcreteComponent) };
+    let decorator2 = ConcreteDecoratorB { component: Box::new(decorator1) };
+    println!("Client: Now I've got a decorated component:");
+    client_code(&decorator2);
+}
+```
+
 ## Pairs well with
 
 Strategy (decorate a strategy with cross-cutting behavior); Composite (decorators have similar tree-of-wrappers shape).
+
+---
+
+<a id="extras"></a>
+
+# Tier 0 and Non-GoF Patterns
+
+**Tier 0** = what the language already gives you. Try it before any Tier 1
+pattern. Every GoF reference also has a *Lighter idiomatic forms* table. This
+file covers the non-GoF patterns you will reach for most often.
+
+Use the same *Pattern check* line with `(Tier 0)`:
+
+```
+Pattern check: Dispatch Map (Tier 0) — applied — 4 export formats keyed on Format enum; each is one function.
+Pattern check: Repository (Tier 0) — extended — new OrderRepository mirrors src/<feature>/user-repository.ts.
+```
+
+| Pattern | Use when | Details |
+|---|---|---|
+| Guard Clause | nested `if`, `else` after exit | [control-flow.md](#control-flow) R1–R3 |
+| Dispatch Map | ≥ 3 branches pick behavior by key | [control-flow.md](#control-flow) R4 |
+| Null Object | repeated `if (x != null)` before the same calls | below |
+| Result type | expected failures handled by callers | below |
+| Repository | persistence details leaking into domain logic | below |
+| Specification | the same business rule combined / reused in many queries | below |
+| Pipeline / Middleware | ordered, composable processing steps | below |
+| Dependency Injection | a dependency varies or does I/O | below |
+
+---
+
+## Null Object
+
+**Intent.** Replace "absent" with an object that does nothing, so callers
+drop their null checks.
+
+**Use when** many call sites guard the same optional collaborator
+(`if (logger) logger.log(…)`), and "do nothing" is a correct default.
+
+**Don't use when**
+
+- Absence must be handled differently at each call site → use `Optional` / `Option` / `?.`
+- Silently doing nothing hides a real error → fail fast instead
+- There is only one call site → a single null check is simpler
+
+```typescript
+interface Logger { log(msg: string): void }
+const noopLogger: Logger = { log: () => {} };
+
+class Service {
+  constructor(private logger: Logger = noopLogger) {}
+  run() { this.logger.log('run'); }          // no null check anywhere
+}
+```
+
+| Language | Form |
+|---|---|
+| Python | a `NullX` class or `lambda *_: None` default; `contextlib.nullcontext()` for context managers |
+| Java | a stateless `NoOpX` implementation; `Optional` when absence is meaningful |
+| C# | `NullLogger.Instance`-style singleton; nullable reference types for real absence |
+| Go | a zero-value struct whose methods are no-ops; `io.Discard` |
+| C++ | a no-op implementation behind a reference; `std::optional` for real absence |
+| Rust | `Option<T>` is usually better; a no-op trait impl when a default is correct |
+
+---
+
+## Result type
+
+**Intent.** Return expected failures as values, not exceptions, so the type
+system makes callers handle them and control flow stays flat.
+
+**Use when** failure is part of the domain (validation, not found, conflict)
+and callers branch on it.
+
+**Don't use when**
+
+- The language's idiom is exceptions and the failure is truly exceptional (Java/C# I/O errors)
+- Every caller just re-throws → let it propagate
+- It would wrap an API that already returns `(value, error)` (Go) or `Result` (Rust)
+
+```typescript
+type Result<T, E = string> = { ok: true; value: T } | { ok: false; error: E };
+
+function parseAge(s: string): Result<number> {
+  const n = Number(s);
+  if (!Number.isInteger(n) || n < 0) return { ok: false, error: 'invalid age' };
+  return { ok: true, value: n };
+}
+```
+
+| Language | Form |
+|---|---|
+| Python | return `T \| None` or a small dataclass; raise for truly exceptional cases |
+| Java | sealed interface `Result<T>` with `Ok` / `Err` records; `Optional` for "not found" |
+| C# | `OneOf` / a `Result<T>` record; `bool TryX(out T)` for simple cases |
+| Go | `(T, error)` — already idiomatic; check with an early return |
+| C++ | `std::expected<T, E>` (C++23) |
+| Rust | `Result<T, E>` + `?` — native |
+
+---
+
+## Repository
+
+**Intent.** Put persistence behind a collection-like interface, so domain
+logic never builds queries or touches the ORM directly.
+
+**Use when** domain / service code is mixing business rules with SQL / ORM
+calls, or you need to unit-test logic without a database.
+
+**Don't use when**
+
+- A thin CRUD app where the ORM already *is* the repository (Django models, ActiveRecord, EF `DbSet`)
+- It would be a one-implementation interface that only forwards to the ORM with no query logic → skip the interface, keep the class
+- It hides N+1 queries: repositories must expose batch methods (`findByIds`), see control-flow.md R5
+
+```typescript
+interface OrderRepository {
+  byId(id: OrderId): Promise<Order | undefined>;
+  byIds(ids: OrderId[]): Promise<Order[]>;          // batch — avoids N+1
+  save(order: Order): Promise<void>;
+}
+```
+
+Keep repository methods named after domain questions (`overdueFor(customer)`),
+not generic `query(filter)` passthroughs.
+
+---
+
+## Specification
+
+**Intent.** Name a business rule as an object or predicate that can be
+combined (`and` / `or` / `not`) and reused in memory and in queries.
+
+**Use when** the same eligibility / filter rule appears in several queries or
+code paths, and rules are combined in different ways.
+
+**Don't use when**
+
+- The rule is used once → a named predicate function is enough
+- Combinations are fixed → write the combined predicate directly
+
+```typescript
+type Spec<T> = (x: T) => boolean;
+const and = <T>(...s: Spec<T>[]): Spec<T> => x => s.every(f => f(x));
+const isActive: Spec<User> = u => u.active;
+const isVerified: Spec<User> = u => u.verified;
+const canOrder = and(isActive, isVerified);
+```
+
+---
+
+## Pipeline / Middleware
+
+**Intent.** Process a request through an ordered list of small steps, each of
+which can transform the request, short-circuit it, or wrap the next step.
+
+**Use when** cross-cutting steps (auth, logging, validation, retry, caching)
+wrap a core handler, and their order or membership changes per route or
+configuration.
+
+**Don't use when**
+
+- There are 1–2 fixed steps → call them in sequence
+- Steps don't share one input/output shape
+
+This is Chain of Responsibility + Decorator in function form. Use the
+framework's native mechanism when there is one (Express / Koa middleware,
+ASP.NET Core middleware, Go `func(http.Handler) http.Handler`, Rust
+tower `Layer`, Python ASGI middleware).
+
+---
+
+## Dependency Injection
+
+**Intent.** Pass collaborators in (constructor / parameter) instead of
+constructing or importing them inside, so they can vary and be replaced in
+tests.
+
+**Inject** anything that does I/O (DB, HTTP, clock, random, filesystem, env)
+or has more than one real implementation.
+
+**Don't inject** pure helpers, value objects, or stable utilities. Import and
+call them directly.
+
+**Don't build** an interface for every class "for DI". Most languages can
+substitute a concrete class in tests (fakes, test doubles, module mocking).
+Add the interface once there is a second implementation or a boundary you
+must decouple.
+
+Prefer constructor injection with explicit parameters over service locators
+and global containers reached from inside business code.
 
 ---
 
@@ -1608,6 +6079,21 @@ complex set of classes.
 - The subsystem already has a simple public API → no facade needed
 - The facade would just re-export everything → that's a barrel file, not a facade
 - You'd be creating a facade with one method that calls one underlying method → premature
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a module exporting a few top-level functions |
+| Python | a module with a small set of public functions (`__all__`) |
+| Java | one service class with a deliberately small public surface |
+| C# | one service class with a deliberately small public surface |
+| Go | the package's exported API — keep internals unexported |
+| C++ | a header exposing a few free functions; internals in a detail namespace |
+| Rust | a module with a few `pub fn`s; internals stay private, re-export with `pub use` |
 
 ## TypeScript Example
 
@@ -1707,6 +6193,368 @@ const facade = new Facade(subsystem1, subsystem2);
 clientCode(facade);
 ```
 
+## Python Example
+
+```python
+class Subsystem1:
+    """A subsystem can accept requests either from the facade or client directly.
+    To the subsystem, the facade is yet another client."""
+
+    def operation1(self) -> str:
+        return "Subsystem1: Ready!\n"
+
+    def operation_n(self) -> str:
+        return "Subsystem1: Go!\n"
+
+
+class Subsystem2:
+    """Some facades can work with multiple subsystems at the same time."""
+
+    def operation1(self) -> str:
+        return "Subsystem2: Get ready!\n"
+
+    def operation_z(self) -> str:
+        return "Subsystem2: Fire!"
+
+
+class Facade:
+    """The Facade provides a simple interface to the complex logic of one or
+    several subsystems, delegating client requests to the appropriate objects
+    and managing their lifecycle."""
+
+    def __init__(self, subsystem1: Subsystem1 = None, subsystem2: Subsystem2 = None) -> None:
+        self._subsystem1 = subsystem1 or Subsystem1()
+        self._subsystem2 = subsystem2 or Subsystem2()
+
+    def operation(self) -> str:
+        result = "Facade initializes subsystems:\n"
+        result += self._subsystem1.operation1()
+        result += self._subsystem2.operation1()
+        result += "Facade orders subsystems to perform the action:\n"
+        result += self._subsystem1.operation_n()
+        result += self._subsystem2.operation_z()
+        return result
+
+
+def client_code(facade: Facade) -> None:
+    """The client works with complex subsystems through the simple Facade
+    interface, keeping the complexity under control."""
+    print(facade.operation())
+
+
+if __name__ == "__main__":
+    subsystem1 = Subsystem1()
+    subsystem2 = Subsystem2()
+    facade = Facade(subsystem1, subsystem2)
+    client_code(facade)
+```
+
+## Java Example
+
+```java
+// The Subsystem can accept requests either from the facade or client directly.
+class Subsystem1 {
+    public String operation1() {
+        return "Subsystem1: Ready!\n";
+    }
+
+    public String operationN() {
+        return "Subsystem1: Go!\n";
+    }
+}
+
+// Some facades can work with multiple subsystems at the same time.
+class Subsystem2 {
+    public String operation1() {
+        return "Subsystem2: Get ready!\n";
+    }
+
+    public String operationZ() {
+        return "Subsystem2: Fire!";
+    }
+}
+
+// The Facade provides a simple interface to the complex logic of the
+// subsystems, delegating client requests and managing their lifecycle.
+class Facade {
+    protected Subsystem1 subsystem1;
+    protected Subsystem2 subsystem2;
+
+    public Facade(Subsystem1 subsystem1, Subsystem2 subsystem2) {
+        this.subsystem1 = subsystem1 != null ? subsystem1 : new Subsystem1();
+        this.subsystem2 = subsystem2 != null ? subsystem2 : new Subsystem2();
+    }
+
+    public String operation() {
+        String result = "Facade initializes subsystems:\n";
+        result += subsystem1.operation1();
+        result += subsystem2.operation1();
+        result += "Facade orders subsystems to perform the action:\n";
+        result += subsystem1.operationN();
+        result += subsystem2.operationZ();
+        return result;
+    }
+}
+
+public class Demo {
+    // The client works with complex subsystems through the simple Facade.
+    static void clientCode(Facade facade) {
+        System.out.println(facade.operation());
+    }
+
+    public static void main(String[] args) {
+        Subsystem1 subsystem1 = new Subsystem1();
+        Subsystem2 subsystem2 = new Subsystem2();
+        Facade facade = new Facade(subsystem1, subsystem2);
+        clientCode(facade);
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Subsystem can accept requests either from the facade or client directly.
+class Subsystem1
+{
+    public string Operation1() => "Subsystem1: Ready!\n";
+
+    public string OperationN() => "Subsystem1: Go!\n";
+}
+
+// Some facades can work with multiple subsystems at the same time.
+class Subsystem2
+{
+    public string Operation1() => "Subsystem2: Get ready!\n";
+
+    public string OperationZ() => "Subsystem2: Fire!";
+}
+
+// The Facade provides a simple interface to the complex logic of the
+// subsystems, delegating client requests and managing their lifecycle.
+class Facade
+{
+    protected Subsystem1 subsystem1;
+    protected Subsystem2 subsystem2;
+
+    public Facade(Subsystem1 subsystem1 = null, Subsystem2 subsystem2 = null)
+    {
+        this.subsystem1 = subsystem1 ?? new Subsystem1();
+        this.subsystem2 = subsystem2 ?? new Subsystem2();
+    }
+
+    public string Operation()
+    {
+        string result = "Facade initializes subsystems:\n";
+        result += subsystem1.Operation1();
+        result += subsystem2.Operation1();
+        result += "Facade orders subsystems to perform the action:\n";
+        result += subsystem1.OperationN();
+        result += subsystem2.OperationZ();
+        return result;
+    }
+}
+
+class Program
+{
+    // The client works with complex subsystems through the simple Facade.
+    static void ClientCode(Facade facade)
+    {
+        Console.WriteLine(facade.Operation());
+    }
+
+    static void Main(string[] args)
+    {
+        Subsystem1 subsystem1 = new Subsystem1();
+        Subsystem2 subsystem2 = new Subsystem2();
+        Facade facade = new Facade(subsystem1, subsystem2);
+        ClientCode(facade);
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Subsystem1 can accept requests either from the facade or client directly.
+type Subsystem1 struct{}
+
+func (s *Subsystem1) Operation1() string { return "Subsystem1: Ready!\n" }
+func (s *Subsystem1) OperationN() string { return "Subsystem1: Go!\n" }
+
+// Subsystem2 shows that a facade can work with multiple subsystems.
+type Subsystem2 struct{}
+
+func (s *Subsystem2) Operation1() string { return "Subsystem2: Get ready!\n" }
+func (s *Subsystem2) OperationZ() string { return "Subsystem2: Fire!" }
+
+// Facade provides a simple interface to the complex logic of the subsystems,
+// delegating client requests and managing their lifecycle.
+type Facade struct {
+	subsystem1 *Subsystem1
+	subsystem2 *Subsystem2
+}
+
+func NewFacade(s1 *Subsystem1, s2 *Subsystem2) *Facade {
+	if s1 == nil {
+		s1 = &Subsystem1{}
+	}
+	if s2 == nil {
+		s2 = &Subsystem2{}
+	}
+	return &Facade{subsystem1: s1, subsystem2: s2}
+}
+
+func (f *Facade) Operation() string {
+	result := "Facade initializes subsystems:\n"
+	result += f.subsystem1.Operation1()
+	result += f.subsystem2.Operation1()
+	result += "Facade orders subsystems to perform the action:\n"
+	result += f.subsystem1.OperationN()
+	result += f.subsystem2.OperationZ()
+	return result
+}
+
+// clientCode works with complex subsystems through the simple Facade.
+func clientCode(facade *Facade) {
+	fmt.Println(facade.Operation())
+}
+
+func main() {
+	subsystem1 := &Subsystem1{}
+	subsystem2 := &Subsystem2{}
+	facade := NewFacade(subsystem1, subsystem2)
+	clientCode(facade)
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <string>
+
+// The Subsystem can accept requests either from the facade or client directly.
+class Subsystem1 {
+public:
+    std::string Operation1() const { return "Subsystem1: Ready!\n"; }
+    std::string OperationN() const { return "Subsystem1: Go!\n"; }
+};
+
+// Some facades can work with multiple subsystems at the same time.
+class Subsystem2 {
+public:
+    std::string Operation1() const { return "Subsystem2: Get ready!\n"; }
+    std::string OperationZ() const { return "Subsystem2: Fire!"; }
+};
+
+// The Facade provides a simple interface to the complex logic of the
+// subsystems, delegating client requests to the appropriate objects.
+class Facade {
+protected:
+    Subsystem1* subsystem1_;
+    Subsystem2* subsystem2_;
+
+public:
+    Facade(Subsystem1* s1 = nullptr, Subsystem2* s2 = nullptr)
+        : subsystem1_(s1 ? s1 : new Subsystem1()),
+          subsystem2_(s2 ? s2 : new Subsystem2()) {}
+
+    std::string Operation() const {
+        std::string result = "Facade initializes subsystems:\n";
+        result += subsystem1_->Operation1();
+        result += subsystem2_->Operation1();
+        result += "Facade orders subsystems to perform the action:\n";
+        result += subsystem1_->OperationN();
+        result += subsystem2_->OperationZ();
+        return result;
+    }
+};
+
+// The client works with complex subsystems through the simple Facade.
+void ClientCode(const Facade& facade) {
+    std::cout << facade.Operation() << "\n";
+}
+
+int main() {
+    Subsystem1* subsystem1 = new Subsystem1();
+    Subsystem2* subsystem2 = new Subsystem2();
+    Facade facade(subsystem1, subsystem2);
+    ClientCode(facade);
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// A subsystem can accept requests either from the facade or client directly.
+struct Subsystem1;
+
+impl Subsystem1 {
+    fn operation1(&self) -> String {
+        "Subsystem1: Ready!\n".to_string()
+    }
+    fn operation_n(&self) -> String {
+        "Subsystem1: Go!\n".to_string()
+    }
+}
+
+// Some facades can work with multiple subsystems at the same time.
+struct Subsystem2;
+
+impl Subsystem2 {
+    fn operation1(&self) -> String {
+        "Subsystem2: Get ready!\n".to_string()
+    }
+    fn operation_z(&self) -> String {
+        "Subsystem2: Fire!".to_string()
+    }
+}
+
+// The Facade provides a simple interface to the complex logic of the
+// subsystems, delegating client requests and managing their lifecycle.
+struct Facade {
+    subsystem1: Subsystem1,
+    subsystem2: Subsystem2,
+}
+
+impl Facade {
+    fn new() -> Self {
+        Facade {
+            subsystem1: Subsystem1,
+            subsystem2: Subsystem2,
+        }
+    }
+
+    fn operation(&self) -> String {
+        let mut result = String::from("Facade initializes subsystems:\n");
+        result += &self.subsystem1.operation1();
+        result += &self.subsystem2.operation1();
+        result += "Facade orders subsystems to perform the action:\n";
+        result += &self.subsystem1.operation_n();
+        result += &self.subsystem2.operation_z();
+        result
+    }
+}
+
+// The client works with complex subsystems through the simple Facade.
+fn client_code(facade: &Facade) {
+    println!("{}", facade.operation());
+}
+
+fn main() {
+    let facade = Facade::new();
+    client_code(&facade);
+}
+```
+
 ## Pairs well with
 
 Adapter (facades often wrap multiple adapters); Singleton (facades are commonly accessed as singletons by convention);
@@ -1749,6 +6597,21 @@ allows subclasses to alter the type of objects that will be created.
 - You only have one concrete product type and no realistic plan for a second → just call `new`
 - The "factory" would be a one-liner that returns `new Foo()` with no logic → premature
 - The codebase already has a factory for this domain → extend it, do not create a parallel one
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a plain function `(kind) => Product`, or a `Record<Kind, () => Product>` map — no Creator subclass |
+| Python | a dict of callables, or `@classmethod` alternate constructors (`from_json`) |
+| Java | static factory methods (`of`, `from`), a `Map<Kind, Supplier<T>>`, or a sealed interface + `switch` |
+| C# | a static `Create(...)` method or a `Dictionary<Kind, Func<T>>` |
+| Go | `NewX(...)` constructor funcs, or `map[string]func() X` |
+| C++ | a free function returning `std::unique_ptr<Base>`, or a map of `std::function` |
+| Rust | `fn new()` / `From` / `TryFrom` impls, or an enum + `match` |
 
 ## TypeScript Example
 
@@ -1849,6 +6712,407 @@ console.log('App: Launched with the ConcreteCreator2.');
 clientCode(new ConcreteCreator2());
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Product(ABC):
+    """Declares the operations that all concrete products must implement."""
+
+    @abstractmethod
+    def operation(self) -> str:
+        pass
+
+
+class ConcreteProduct1(Product):
+    def operation(self) -> str:
+        return "{Result of the ConcreteProduct1}"
+
+
+class ConcreteProduct2(Product):
+    def operation(self) -> str:
+        return "{Result of the ConcreteProduct2}"
+
+
+class Creator(ABC):
+    """
+    Declares the factory method that returns a Product. Subclasses provide the
+    implementation. Note the Creator's primary responsibility is business logic,
+    not creation.
+    """
+
+    @abstractmethod
+    def factory_method(self) -> Product:
+        pass
+
+    def some_operation(self) -> str:
+        product = self.factory_method()
+        return f"Creator: The same creator's code has just worked with {product.operation()}"
+
+
+class ConcreteCreator1(Creator):
+    def factory_method(self) -> Product:
+        return ConcreteProduct1()
+
+
+class ConcreteCreator2(Creator):
+    def factory_method(self) -> Product:
+        return ConcreteProduct2()
+
+
+def client_code(creator: Creator) -> None:
+    print("Client: I'm not aware of the creator's class, but it still works.")
+    print(creator.some_operation())
+
+
+if __name__ == "__main__":
+    print("App: Launched with the ConcreteCreator1.")
+    client_code(ConcreteCreator1())
+    print()
+    print("App: Launched with the ConcreteCreator2.")
+    client_code(ConcreteCreator2())
+```
+
+## Java Example
+
+```java
+// The Product interface declares the operations that all concrete products
+// must implement.
+interface Product {
+    String operation();
+}
+
+class ConcreteProduct1 implements Product {
+    public String operation() {
+        return "{Result of the ConcreteProduct1}";
+    }
+}
+
+class ConcreteProduct2 implements Product {
+    public String operation() {
+        return "{Result of the ConcreteProduct2}";
+    }
+}
+
+// The Creator declares the factory method that returns a Product. Subclasses
+// provide the implementation.
+abstract class Creator {
+    public abstract Product factoryMethod();
+
+    public String someOperation() {
+        Product product = factoryMethod();
+        return "Creator: The same creator's code has just worked with " + product.operation();
+    }
+}
+
+class ConcreteCreator1 extends Creator {
+    public Product factoryMethod() {
+        return new ConcreteProduct1();
+    }
+}
+
+class ConcreteCreator2 extends Creator {
+    public Product factoryMethod() {
+        return new ConcreteProduct2();
+    }
+}
+
+public class Demo {
+    static void clientCode(Creator creator) {
+        System.out.println("Client: I'm not aware of the creator's class, but it still works.");
+        System.out.println(creator.someOperation());
+    }
+
+    public static void main(String[] args) {
+        System.out.println("App: Launched with the ConcreteCreator1.");
+        clientCode(new ConcreteCreator1());
+        System.out.println();
+        System.out.println("App: Launched with the ConcreteCreator2.");
+        clientCode(new ConcreteCreator2());
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Product interface declares the operations that all concrete products
+// must implement.
+public interface IProduct
+{
+    string Operation();
+}
+
+public class ConcreteProduct1 : IProduct
+{
+    public string Operation() => "{Result of the ConcreteProduct1}";
+}
+
+public class ConcreteProduct2 : IProduct
+{
+    public string Operation() => "{Result of the ConcreteProduct2}";
+}
+
+// The Creator declares the factory method that returns a Product. Subclasses
+// provide the implementation.
+public abstract class Creator
+{
+    public abstract IProduct FactoryMethod();
+
+    public string SomeOperation()
+    {
+        var product = FactoryMethod();
+        return "Creator: The same creator's code has just worked with " + product.Operation();
+    }
+}
+
+public class ConcreteCreator1 : Creator
+{
+    public override IProduct FactoryMethod() => new ConcreteProduct1();
+}
+
+public class ConcreteCreator2 : Creator
+{
+    public override IProduct FactoryMethod() => new ConcreteProduct2();
+}
+
+public class Program
+{
+    static void ClientCode(Creator creator)
+    {
+        Console.WriteLine("Client: I'm not aware of the creator's class, but it still works.");
+        Console.WriteLine(creator.SomeOperation());
+    }
+
+    public static void Main()
+    {
+        Console.WriteLine("App: Launched with the ConcreteCreator1.");
+        ClientCode(new ConcreteCreator1());
+        Console.WriteLine();
+        Console.WriteLine("App: Launched with the ConcreteCreator2.");
+        ClientCode(new ConcreteCreator2());
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Product declares the operations that all concrete products must implement.
+type Product interface {
+	Operation() string
+}
+
+type ConcreteProduct1 struct{}
+
+func (p *ConcreteProduct1) Operation() string {
+	return "{Result of the ConcreteProduct1}"
+}
+
+type ConcreteProduct2 struct{}
+
+func (p *ConcreteProduct2) Operation() string {
+	return "{Result of the ConcreteProduct2}"
+}
+
+// Creator declares the factory method. Concrete creators supply the product.
+type Creator interface {
+	FactoryMethod() Product
+	SomeOperation() string
+}
+
+// baseCreator embeds the shared business logic that relies on the product.
+type baseCreator struct {
+	factory func() Product
+}
+
+func (c *baseCreator) SomeOperation() string {
+	product := c.factory()
+	return "Creator: The same creator's code has just worked with " + product.Operation()
+}
+
+type ConcreteCreator1 struct{ baseCreator }
+
+func NewConcreteCreator1() *ConcreteCreator1 {
+	c := &ConcreteCreator1{}
+	c.factory = c.FactoryMethod
+	return c
+}
+
+func (c *ConcreteCreator1) FactoryMethod() Product { return &ConcreteProduct1{} }
+
+type ConcreteCreator2 struct{ baseCreator }
+
+func NewConcreteCreator2() *ConcreteCreator2 {
+	c := &ConcreteCreator2{}
+	c.factory = c.FactoryMethod
+	return c
+}
+
+func (c *ConcreteCreator2) FactoryMethod() Product { return &ConcreteProduct2{} }
+
+func clientCode(creator Creator) {
+	fmt.Println("Client: I'm not aware of the creator's class, but it still works.")
+	fmt.Println(creator.SomeOperation())
+}
+
+func main() {
+	fmt.Println("App: Launched with the ConcreteCreator1.")
+	clientCode(NewConcreteCreator1())
+	fmt.Println()
+	fmt.Println("App: Launched with the ConcreteCreator2.")
+	clientCode(NewConcreteCreator2())
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+
+// The Product interface declares the operations that all concrete products
+// must implement.
+class Product {
+public:
+    virtual ~Product() = default;
+    virtual std::string operation() const = 0;
+};
+
+class ConcreteProduct1 : public Product {
+public:
+    std::string operation() const override {
+        return "{Result of the ConcreteProduct1}";
+    }
+};
+
+class ConcreteProduct2 : public Product {
+public:
+    std::string operation() const override {
+        return "{Result of the ConcreteProduct2}";
+    }
+};
+
+// The Creator declares the factory method that returns a Product. Subclasses
+// provide the implementation.
+class Creator {
+public:
+    virtual ~Creator() = default;
+    virtual std::unique_ptr<Product> factoryMethod() const = 0;
+
+    std::string someOperation() const {
+        auto product = factoryMethod();
+        return "Creator: The same creator's code has just worked with " + product->operation();
+    }
+};
+
+class ConcreteCreator1 : public Creator {
+public:
+    std::unique_ptr<Product> factoryMethod() const override {
+        return std::make_unique<ConcreteProduct1>();
+    }
+};
+
+class ConcreteCreator2 : public Creator {
+public:
+    std::unique_ptr<Product> factoryMethod() const override {
+        return std::make_unique<ConcreteProduct2>();
+    }
+};
+
+void clientCode(const Creator& creator) {
+    std::cout << "Client: I'm not aware of the creator's class, but it still works.\n";
+    std::cout << creator.someOperation() << "\n";
+}
+
+int main() {
+    std::cout << "App: Launched with the ConcreteCreator1.\n";
+    clientCode(ConcreteCreator1());
+    std::cout << "\n";
+    std::cout << "App: Launched with the ConcreteCreator2.\n";
+    clientCode(ConcreteCreator2());
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The Product trait declares the operations that all concrete products must
+// implement.
+trait Product {
+    fn operation(&self) -> String;
+}
+
+struct ConcreteProduct1;
+
+impl Product for ConcreteProduct1 {
+    fn operation(&self) -> String {
+        "{Result of the ConcreteProduct1}".to_string()
+    }
+}
+
+struct ConcreteProduct2;
+
+impl Product for ConcreteProduct2 {
+    fn operation(&self) -> String {
+        "{Result of the ConcreteProduct2}".to_string()
+    }
+}
+
+// The Creator declares the factory method that returns a Product. Implementors
+// change the resulting product's type. some_operation holds the business logic.
+trait Creator {
+    fn factory_method(&self) -> Box<dyn Product>;
+
+    fn some_operation(&self) -> String {
+        let product = self.factory_method();
+        format!(
+            "Creator: The same creator's code has just worked with {}",
+            product.operation()
+        )
+    }
+}
+
+struct ConcreteCreator1;
+
+impl Creator for ConcreteCreator1 {
+    fn factory_method(&self) -> Box<dyn Product> {
+        Box::new(ConcreteProduct1)
+    }
+}
+
+struct ConcreteCreator2;
+
+impl Creator for ConcreteCreator2 {
+    fn factory_method(&self) -> Box<dyn Product> {
+        Box::new(ConcreteProduct2)
+    }
+}
+
+fn client_code(creator: &dyn Creator) {
+    println!("Client: I'm not aware of the creator's class, but it still works.");
+    println!("{}", creator.some_operation());
+}
+
+fn main() {
+    println!("App: Launched with the ConcreteCreator1.");
+    client_code(&ConcreteCreator1);
+    println!();
+    println!("App: Launched with the ConcreteCreator2.");
+    client_code(&ConcreteCreator2);
+}
+```
+
 ## Pairs well with
 
 Often combined with Strategy (factory picks the concrete strategy) and Abstract Factory (when families of related
@@ -1889,6 +7153,21 @@ common parts of state between multiple objects instead of keeping all of the dat
 - Memory isn't actually a bottleneck → don't over-engineer
 - Objects are few (<10000) → savings won't justify complexity
 - The "shared" state changes frequently → flyweight breaks
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a `Map` cache of shared immutable objects |
+| Python | an `lru_cache`d factory, `sys.intern`, and `__slots__` |
+| Java | `valueOf`-style caches, `Map.computeIfAbsent` |
+| C# | `ConcurrentDictionary.GetOrAdd`, `string.Intern` |
+| Go | a map cache, or `unique.Make` (Go 1.23+) |
+| C++ | an `unordered_map` of `shared_ptr<const T>` |
+| Rust | an `Arc<T>` interner (`HashMap<K, Arc<T>>`) |
 
 ## TypeScript Example
 
@@ -1989,6 +7268,538 @@ addCarToPoliceDatabase(factory, 'CL234IR', 'James Doe', 'BMW', 'X1', 'red');
 factory.listFlyweights();
 ```
 
+## Python Example
+
+```python
+import json
+from typing import Dict, List
+
+
+class Flyweight:
+    """
+    The Flyweight stores a common portion of the state (intrinsic state) that
+    belongs to multiple real business entities. The Flyweight accepts the rest
+    of the state (extrinsic state, unique for each entity) via method params.
+    """
+
+    def __init__(self, shared_state: List[str]) -> None:
+        self._shared_state = shared_state
+
+    def operation(self, unique_state: List[str]) -> None:
+        s = json.dumps(self._shared_state)
+        u = json.dumps(unique_state)
+        print(f"Flyweight: Displaying shared ({s}) and unique ({u}) state.")
+
+
+class FlyweightFactory:
+    """
+    The Flyweight Factory creates and manages the Flyweight objects. It ensures
+    that flyweights are shared correctly. When the client requests a flyweight,
+    the factory either returns an existing instance or creates a new one.
+    """
+
+    _flyweights: Dict[str, Flyweight] = {}
+
+    def __init__(self, initial_flyweights: List[List[str]]) -> None:
+        for state in initial_flyweights:
+            self._flyweights[self.get_key(state)] = Flyweight(state)
+
+    def get_key(self, state: List[str]) -> str:
+        return "_".join(state)
+
+    def get_flyweight(self, shared_state: List[str]) -> Flyweight:
+        key = self.get_key(shared_state)
+        if key not in self._flyweights:
+            print("FlyweightFactory: Can't find a flyweight, creating new one.")
+            self._flyweights[key] = Flyweight(shared_state)
+        else:
+            print("FlyweightFactory: Reusing existing flyweight.")
+        return self._flyweights[key]
+
+    def list_flyweights(self) -> None:
+        count = len(self._flyweights)
+        print(f"\nFlyweightFactory: I have {count} flyweights:")
+        print("\n".join(self._flyweights.keys()))
+
+
+def add_car_to_police_database(
+    factory: FlyweightFactory, plates: str, owner: str,
+    brand: str, model: str, color: str,
+) -> None:
+    print("\nClient: Adding a car to database.")
+    flyweight = factory.get_flyweight([brand, model, color])
+    flyweight.operation([plates, owner])
+
+
+if __name__ == "__main__":
+    factory = FlyweightFactory([
+        ["Chevrolet", "Camaro2018", "pink"],
+        ["Mercedes Benz", "C300", "black"],
+        ["Mercedes Benz", "C500", "red"],
+        ["BMW", "M5", "red"],
+        ["BMW", "X6", "white"],
+    ])
+    factory.list_flyweights()
+
+    add_car_to_police_database(factory, "CL234IR", "James Doe", "BMW", "M5", "red")
+    add_car_to_police_database(factory, "CL234IR", "James Doe", "BMW", "X1", "red")
+
+    factory.list_flyweights()
+```
+
+## Java Example
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+// The Flyweight stores a common portion of the state (intrinsic state) that
+// belongs to multiple real business entities. It accepts the rest of the state
+// (extrinsic state, unique for each entity) via its method parameters.
+class Flyweight {
+    private final String[] sharedState;
+
+    public Flyweight(String[] sharedState) {
+        this.sharedState = sharedState;
+    }
+
+    public void operation(String[] uniqueState) {
+        System.out.println("Flyweight: Displaying shared (" +
+                String.join(",", sharedState) + ") and unique (" +
+                String.join(",", uniqueState) + ") state.");
+    }
+}
+
+// The Flyweight Factory creates and manages the Flyweight objects. When the
+// client requests a flyweight, the factory returns an existing instance or
+// creates a new one.
+class FlyweightFactory {
+    private final Map<String, Flyweight> flyweights = new HashMap<>();
+
+    public FlyweightFactory(String[][] initialFlyweights) {
+        for (String[] state : initialFlyweights) {
+            flyweights.put(getKey(state), new Flyweight(state));
+        }
+    }
+
+    private String getKey(String[] state) {
+        return String.join("_", state);
+    }
+
+    public Flyweight getFlyweight(String[] sharedState) {
+        String key = getKey(sharedState);
+        if (!flyweights.containsKey(key)) {
+            System.out.println("FlyweightFactory: Can't find a flyweight, creating new one.");
+            flyweights.put(key, new Flyweight(sharedState));
+        } else {
+            System.out.println("FlyweightFactory: Reusing existing flyweight.");
+        }
+        return flyweights.get(key);
+    }
+
+    public void listFlyweights() {
+        System.out.println("\nFlyweightFactory: I have " + flyweights.size() + " flyweights:");
+        flyweights.keySet().forEach(System.out::println);
+    }
+}
+
+public class Demo {
+    static void addCarToPoliceDatabase(FlyweightFactory ff, String plates,
+            String owner, String brand, String model, String color) {
+        System.out.println("\nClient: Adding a car to database.");
+        Flyweight flyweight = ff.getFlyweight(new String[]{brand, model, color});
+        flyweight.operation(new String[]{plates, owner});
+    }
+
+    public static void main(String[] args) {
+        FlyweightFactory factory = new FlyweightFactory(new String[][]{
+                {"Chevrolet", "Camaro2018", "pink"},
+                {"Mercedes Benz", "C300", "black"},
+                {"Mercedes Benz", "C500", "red"},
+                {"BMW", "M5", "red"},
+                {"BMW", "X6", "white"},
+        });
+        factory.listFlyweights();
+
+        addCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "M5", "red");
+        addCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "X1", "red");
+
+        factory.listFlyweights();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+// The Flyweight stores a common portion of the state (intrinsic state) that
+// belongs to multiple real business entities. It accepts the rest of the state
+// (extrinsic state, unique for each entity) via its method parameters.
+public class Flyweight
+{
+    private readonly string[] _sharedState;
+
+    public Flyweight(string[] sharedState)
+    {
+        _sharedState = sharedState;
+    }
+
+    public void Operation(string[] uniqueState)
+    {
+        Console.WriteLine($"Flyweight: Displaying shared ({string.Join(",", _sharedState)}) " +
+            $"and unique ({string.Join(",", uniqueState)}) state.");
+    }
+}
+
+// The Flyweight Factory creates and manages the Flyweight objects. When the
+// client requests a flyweight, the factory returns an existing instance or
+// creates a new one.
+public class FlyweightFactory
+{
+    private readonly Dictionary<string, Flyweight> _flyweights = new();
+
+    public FlyweightFactory(string[][] initialFlyweights)
+    {
+        foreach (var state in initialFlyweights)
+            _flyweights[GetKey(state)] = new Flyweight(state);
+    }
+
+    private string GetKey(string[] state) => string.Join("_", state);
+
+    public Flyweight GetFlyweight(string[] sharedState)
+    {
+        var key = GetKey(sharedState);
+        if (!_flyweights.ContainsKey(key))
+        {
+            Console.WriteLine("FlyweightFactory: Can't find a flyweight, creating new one.");
+            _flyweights[key] = new Flyweight(sharedState);
+        }
+        else
+        {
+            Console.WriteLine("FlyweightFactory: Reusing existing flyweight.");
+        }
+        return _flyweights[key];
+    }
+
+    public void ListFlyweights()
+    {
+        Console.WriteLine($"\nFlyweightFactory: I have {_flyweights.Count} flyweights:");
+        foreach (var key in _flyweights.Keys)
+            Console.WriteLine(key);
+    }
+}
+
+public class Demo
+{
+    static void AddCarToPoliceDatabase(FlyweightFactory ff, string plates,
+        string owner, string brand, string model, string color)
+    {
+        Console.WriteLine("\nClient: Adding a car to database.");
+        var flyweight = ff.GetFlyweight(new[] { brand, model, color });
+        flyweight.Operation(new[] { plates, owner });
+    }
+
+    public static void Main(string[] args)
+    {
+        var factory = new FlyweightFactory(new[]
+        {
+            new[] { "Chevrolet", "Camaro2018", "pink" },
+            new[] { "Mercedes Benz", "C300", "black" },
+            new[] { "Mercedes Benz", "C500", "red" },
+            new[] { "BMW", "M5", "red" },
+            new[] { "BMW", "X6", "white" },
+        });
+        factory.ListFlyweights();
+
+        AddCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "M5", "red");
+        AddCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "X1", "red");
+
+        factory.ListFlyweights();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Flyweight stores a common portion of the state (intrinsic state) that belongs
+// to multiple real business entities. It accepts the rest of the state
+// (extrinsic state, unique for each entity) via its method parameters.
+type Flyweight struct {
+	sharedState []string
+}
+
+func (f *Flyweight) Operation(uniqueState []string) {
+	fmt.Printf("Flyweight: Displaying shared (%s) and unique (%s) state.\n",
+		strings.Join(f.sharedState, ","), strings.Join(uniqueState, ","))
+}
+
+// FlyweightFactory creates and manages the Flyweight objects. When the client
+// requests a flyweight, the factory returns an existing instance or creates one.
+type FlyweightFactory struct {
+	flyweights map[string]*Flyweight
+}
+
+func NewFlyweightFactory(initialFlyweights [][]string) *FlyweightFactory {
+	factory := &FlyweightFactory{flyweights: make(map[string]*Flyweight)}
+	for _, state := range initialFlyweights {
+		factory.flyweights[factory.getKey(state)] = &Flyweight{sharedState: state}
+	}
+	return factory
+}
+
+func (f *FlyweightFactory) getKey(state []string) string {
+	return strings.Join(state, "_")
+}
+
+func (f *FlyweightFactory) GetFlyweight(sharedState []string) *Flyweight {
+	key := f.getKey(sharedState)
+	if _, ok := f.flyweights[key]; !ok {
+		fmt.Println("FlyweightFactory: Can't find a flyweight, creating new one.")
+		f.flyweights[key] = &Flyweight{sharedState: sharedState}
+	} else {
+		fmt.Println("FlyweightFactory: Reusing existing flyweight.")
+	}
+	return f.flyweights[key]
+}
+
+func (f *FlyweightFactory) ListFlyweights() {
+	fmt.Printf("\nFlyweightFactory: I have %d flyweights:\n", len(f.flyweights))
+	for key := range f.flyweights {
+		fmt.Println(key)
+	}
+}
+
+func addCarToPoliceDatabase(ff *FlyweightFactory, plates, owner, brand, model, color string) {
+	fmt.Println("\nClient: Adding a car to database.")
+	flyweight := ff.GetFlyweight([]string{brand, model, color})
+	flyweight.Operation([]string{plates, owner})
+}
+
+func main() {
+	factory := NewFlyweightFactory([][]string{
+		{"Chevrolet", "Camaro2018", "pink"},
+		{"Mercedes Benz", "C300", "black"},
+		{"Mercedes Benz", "C500", "red"},
+		{"BMW", "M5", "red"},
+		{"BMW", "X6", "white"},
+	})
+	factory.ListFlyweights()
+
+	addCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "M5", "red")
+	addCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "X1", "red")
+
+	factory.ListFlyweights()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+// The Flyweight stores a common portion of the state (intrinsic state) that
+// belongs to multiple real business entities. It accepts the rest of the state
+// (extrinsic state, unique for each entity) via its method parameters.
+class Flyweight {
+private:
+    std::vector<std::string> shared_state_;
+
+    static std::string Join(const std::vector<std::string>& parts, const std::string& sep) {
+        std::string result;
+        for (size_t i = 0; i < parts.size(); ++i) {
+            if (i) result += sep;
+            result += parts[i];
+        }
+        return result;
+    }
+
+public:
+    explicit Flyweight(std::vector<std::string> shared_state)
+        : shared_state_(std::move(shared_state)) {}
+
+    void Operation(const std::vector<std::string>& unique_state) const {
+        std::cout << "Flyweight: Displaying shared (" << Join(shared_state_, ",")
+                  << ") and unique (" << Join(unique_state, ",") << ") state.\n";
+    }
+
+    const std::vector<std::string>& GetState() const { return shared_state_; }
+};
+
+// The Flyweight Factory creates and manages the Flyweight objects. When the
+// client requests a flyweight, the factory returns an existing instance or
+// creates a new one.
+class FlyweightFactory {
+private:
+    std::unordered_map<std::string, Flyweight> flyweights_;
+
+    static std::string GetKey(const std::vector<std::string>& state) {
+        std::string key;
+        for (size_t i = 0; i < state.size(); ++i) {
+            if (i) key += "_";
+            key += state[i];
+        }
+        return key;
+    }
+
+public:
+    explicit FlyweightFactory(std::initializer_list<std::vector<std::string>> initial) {
+        for (const auto& state : initial)
+            flyweights_.emplace(GetKey(state), Flyweight(state));
+    }
+
+    Flyweight& GetFlyweight(const std::vector<std::string>& shared_state) {
+        std::string key = GetKey(shared_state);
+        if (flyweights_.find(key) == flyweights_.end()) {
+            std::cout << "FlyweightFactory: Can't find a flyweight, creating new one.\n";
+            flyweights_.emplace(key, Flyweight(shared_state));
+        } else {
+            std::cout << "FlyweightFactory: Reusing existing flyweight.\n";
+        }
+        return flyweights_.at(key);
+    }
+
+    void ListFlyweights() const {
+        std::cout << "\nFlyweightFactory: I have " << flyweights_.size() << " flyweights:\n";
+        for (const auto& pair : flyweights_)
+            std::cout << pair.first << "\n";
+    }
+};
+
+void AddCarToPoliceDatabase(FlyweightFactory& ff, const std::string& plates,
+        const std::string& owner, const std::string& brand,
+        const std::string& model, const std::string& color) {
+    std::cout << "\nClient: Adding a car to database.\n";
+    Flyweight& flyweight = ff.GetFlyweight({brand, model, color});
+    flyweight.Operation({plates, owner});
+}
+
+int main() {
+    FlyweightFactory factory{
+        {"Chevrolet", "Camaro2018", "pink"},
+        {"Mercedes Benz", "C300", "black"},
+        {"Mercedes Benz", "C500", "red"},
+        {"BMW", "M5", "red"},
+        {"BMW", "X6", "white"},
+    };
+    factory.ListFlyweights();
+
+    AddCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "M5", "red");
+    AddCarToPoliceDatabase(factory, "CL234IR", "James Doe", "BMW", "X1", "red");
+
+    factory.ListFlyweights();
+
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+use std::collections::HashMap;
+
+// The Flyweight stores a common portion of the state (intrinsic state) that
+// belongs to multiple real business entities. It accepts the rest of the state
+// (extrinsic state, unique for each entity) via its method parameters.
+struct Flyweight {
+    shared_state: Vec<String>,
+}
+
+impl Flyweight {
+    fn new(shared_state: Vec<String>) -> Self {
+        Flyweight { shared_state }
+    }
+
+    fn operation(&self, unique_state: &[String]) {
+        println!(
+            "Flyweight: Displaying shared ({}) and unique ({}) state.",
+            self.shared_state.join(","),
+            unique_state.join(",")
+        );
+    }
+}
+
+// The Flyweight Factory creates and manages the Flyweight objects. When the
+// client requests a flyweight, the factory returns an existing instance or
+// creates a new one.
+struct FlyweightFactory {
+    flyweights: HashMap<String, Flyweight>,
+}
+
+impl FlyweightFactory {
+    fn new(initial_flyweights: Vec<Vec<String>>) -> Self {
+        let mut flyweights = HashMap::new();
+        for state in initial_flyweights {
+            flyweights.insert(Self::get_key(&state), Flyweight::new(state));
+        }
+        FlyweightFactory { flyweights }
+    }
+
+    fn get_key(state: &[String]) -> String {
+        state.join("_")
+    }
+
+    fn get_flyweight(&mut self, shared_state: Vec<String>) -> &Flyweight {
+        let key = Self::get_key(&shared_state);
+        if !self.flyweights.contains_key(&key) {
+            println!("FlyweightFactory: Can't find a flyweight, creating new one.");
+            self.flyweights.insert(key.clone(), Flyweight::new(shared_state));
+        } else {
+            println!("FlyweightFactory: Reusing existing flyweight.");
+        }
+        &self.flyweights[&key]
+    }
+
+    fn list_flyweights(&self) {
+        println!("\nFlyweightFactory: I have {} flyweights:", self.flyweights.len());
+        for key in self.flyweights.keys() {
+            println!("{}", key);
+        }
+    }
+}
+
+fn add_car_to_police_database(
+    factory: &mut FlyweightFactory, plates: &str, owner: &str,
+    brand: &str, model: &str, color: &str,
+) {
+    println!("\nClient: Adding a car to database.");
+    let flyweight = factory.get_flyweight(vec![
+        brand.to_string(), model.to_string(), color.to_string(),
+    ]);
+    flyweight.operation(&[plates.to_string(), owner.to_string()]);
+}
+
+fn main() {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let mut factory = FlyweightFactory::new(vec![
+        s(&["Chevrolet", "Camaro2018", "pink"]),
+        s(&["Mercedes Benz", "C300", "black"]),
+        s(&["Mercedes Benz", "C500", "red"]),
+        s(&["BMW", "M5", "red"]),
+        s(&["BMW", "X6", "white"]),
+    ]);
+    factory.list_flyweights();
+
+    add_car_to_police_database(&mut factory, "CL234IR", "James Doe", "BMW", "M5", "red");
+    add_car_to_police_database(&mut factory, "CL234IR", "James Doe", "BMW", "X1", "red");
+
+    factory.list_flyweights();
+}
+```
+
 ## Pairs well with
 
 Composite (flyweights as leaves in a Composite); Factory (Flyweight Factory is the gatekeeper that enforces sharing);
@@ -2029,6 +7840,21 @@ representation (list, stack, tree, etc.).
 - A native `for...of` over an array or `Map` already works → use the built-in iterator
 - The collection is a simple array → just `.map()`/`.filter()`/`.forEach()`
 - You'd need an entire iterator class for one consumer → inline the loop
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a generator function `function*` / `[Symbol.iterator]` |
+| Python | a generator with `yield` |
+| Java | `Iterable` + streams |
+| C# | `yield return` / `IEnumerable<T>` |
+| Go | range-over-func iterators `iter.Seq[T]` (Go 1.23+) |
+| C++ | `begin`/`end` + range-for; C++20 ranges, C++23 `std::generator` |
+| Rust | `impl Iterator`, `std::iter::from_fn` |
 
 ## TypeScript Example
 
@@ -2173,6 +7999,504 @@ while (reverseIterator.valid()) {
 }
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from collections.abc import Iterable, Iterator
+from typing import Any, List
+
+
+class AlphabeticalOrderIterator(Iterator):
+    """
+    Concrete Iterators implement various traversal algorithms. These classes
+    store the current traversal position at all times.
+    """
+
+    _position: int = None
+    _reverse: bool = False
+
+    def __init__(self, collection: WordsCollection, reverse: bool = False) -> None:
+        self._collection = collection
+        self._reverse = reverse
+        self._position = -1 if reverse else 0
+
+    def __next__(self) -> Any:
+        try:
+            value = self._collection[self._position]
+            self._position += -1 if self._reverse else 1
+        except IndexError:
+            raise StopIteration()
+        return value
+
+
+class WordsCollection(Iterable):
+    """
+    Concrete Collections provide one or several methods for retrieving fresh
+    iterator instances, compatible with the collection class.
+    """
+
+    def __init__(self, collection: List[Any] = None) -> None:
+        self._collection = collection or []
+
+    def __getitem__(self, index: int) -> Any:
+        return self._collection[index]
+
+    def __iter__(self) -> AlphabeticalOrderIterator:
+        return AlphabeticalOrderIterator(self)
+
+    def get_reverse_iterator(self) -> AlphabeticalOrderIterator:
+        return AlphabeticalOrderIterator(self, True)
+
+    def add_item(self, item: Any) -> None:
+        self._collection.append(item)
+
+
+if __name__ == "__main__":
+    collection = WordsCollection()
+    collection.add_item("First")
+    collection.add_item("Second")
+    collection.add_item("Third")
+
+    print("Straight traversal:")
+    for item in collection:
+        print(item)
+
+    print("")
+    print("Reverse traversal:")
+    for item in collection.get_reverse_iterator():
+        print(item)
+```
+
+## Java Example
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * The Iterator interface declares the traversal operations.
+ */
+interface Iterator<T> {
+    boolean valid();
+    T next();
+}
+
+/**
+ * The Aggregator interface retrieves an external iterator.
+ */
+interface Aggregator {
+    Iterator<String> getIterator();
+}
+
+/**
+ * Concrete Iterators implement various traversal algorithms and store the
+ * current traversal position.
+ */
+class AlphabeticalOrderIterator implements Iterator<String> {
+    private final WordsCollection collection;
+    private int position;
+    private final boolean reverse;
+
+    public AlphabeticalOrderIterator(WordsCollection collection, boolean reverse) {
+        this.collection = collection;
+        this.reverse = reverse;
+        this.position = reverse ? collection.getCount() - 1 : 0;
+    }
+
+    public boolean valid() {
+        return reverse ? position >= 0 : position < collection.getCount();
+    }
+
+    public String next() {
+        String item = collection.getItems().get(position);
+        position += reverse ? -1 : 1;
+        return item;
+    }
+}
+
+/**
+ * Concrete Collections return iterators compatible with the collection.
+ */
+class WordsCollection implements Aggregator {
+    private final List<String> items = new ArrayList<>();
+
+    public List<String> getItems() {
+        return items;
+    }
+
+    public int getCount() {
+        return items.size();
+    }
+
+    public void addItem(String item) {
+        items.add(item);
+    }
+
+    public Iterator<String> getIterator() {
+        return new AlphabeticalOrderIterator(this, false);
+    }
+
+    public Iterator<String> getReverseIterator() {
+        return new AlphabeticalOrderIterator(this, true);
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        WordsCollection collection = new WordsCollection();
+        collection.addItem("First");
+        collection.addItem("Second");
+        collection.addItem("Third");
+
+        System.out.println("Straight traversal:");
+        Iterator<String> iterator = collection.getIterator();
+        while (iterator.valid()) {
+            System.out.println(iterator.next());
+        }
+
+        System.out.println();
+        System.out.println("Reverse traversal:");
+        Iterator<String> reverseIterator = collection.getReverseIterator();
+        while (reverseIterator.valid()) {
+            System.out.println(reverseIterator.next());
+        }
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+// The Iterator interface declares the traversal operations.
+public interface IIterator<T>
+{
+    bool Valid();
+    T Next();
+}
+
+// The Aggregator interface retrieves an external iterator.
+public interface IAggregator
+{
+    IIterator<string> GetIterator();
+}
+
+// Concrete Iterators implement various traversal algorithms and store the
+// current traversal position.
+public class AlphabeticalOrderIterator : IIterator<string>
+{
+    private readonly WordsCollection _collection;
+    private int _position;
+    private readonly bool _reverse;
+
+    public AlphabeticalOrderIterator(WordsCollection collection, bool reverse)
+    {
+        _collection = collection;
+        _reverse = reverse;
+        _position = reverse ? collection.GetCount() - 1 : 0;
+    }
+
+    public bool Valid()
+    {
+        return _reverse ? _position >= 0 : _position < _collection.GetCount();
+    }
+
+    public string Next()
+    {
+        string item = _collection.GetItems()[_position];
+        _position += _reverse ? -1 : 1;
+        return item;
+    }
+}
+
+// Concrete Collections return iterators compatible with the collection.
+public class WordsCollection : IAggregator
+{
+    private readonly List<string> _items = new List<string>();
+
+    public List<string> GetItems() => _items;
+
+    public int GetCount() => _items.Count;
+
+    public void AddItem(string item) => _items.Add(item);
+
+    public IIterator<string> GetIterator() => new AlphabeticalOrderIterator(this, false);
+
+    public IIterator<string> GetReverseIterator() => new AlphabeticalOrderIterator(this, true);
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var collection = new WordsCollection();
+        collection.AddItem("First");
+        collection.AddItem("Second");
+        collection.AddItem("Third");
+
+        Console.WriteLine("Straight traversal:");
+        var iterator = collection.GetIterator();
+        while (iterator.Valid())
+            Console.WriteLine(iterator.Next());
+
+        Console.WriteLine();
+        Console.WriteLine("Reverse traversal:");
+        var reverseIterator = collection.GetReverseIterator();
+        while (reverseIterator.Valid())
+            Console.WriteLine(reverseIterator.Next());
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Iterator declares the traversal operations.
+type Iterator interface {
+	Valid() bool
+	Next() string
+}
+
+// Aggregator retrieves an external iterator.
+type Aggregator interface {
+	GetIterator() Iterator
+}
+
+// AlphabeticalOrderIterator implements a traversal algorithm and stores the
+// current traversal position.
+type AlphabeticalOrderIterator struct {
+	collection *WordsCollection
+	position   int
+	reverse    bool
+}
+
+func (it *AlphabeticalOrderIterator) Valid() bool {
+	if it.reverse {
+		return it.position >= 0
+	}
+	return it.position < it.collection.GetCount()
+}
+
+func (it *AlphabeticalOrderIterator) Next() string {
+	item := it.collection.items[it.position]
+	if it.reverse {
+		it.position--
+	} else {
+		it.position++
+	}
+	return item
+}
+
+// WordsCollection returns iterators compatible with the collection.
+type WordsCollection struct {
+	items []string
+}
+
+func (c *WordsCollection) GetCount() int {
+	return len(c.items)
+}
+
+func (c *WordsCollection) AddItem(item string) {
+	c.items = append(c.items, item)
+}
+
+func (c *WordsCollection) GetIterator() Iterator {
+	return &AlphabeticalOrderIterator{collection: c, position: 0, reverse: false}
+}
+
+func (c *WordsCollection) GetReverseIterator() Iterator {
+	return &AlphabeticalOrderIterator{collection: c, position: len(c.items) - 1, reverse: true}
+}
+
+func main() {
+	collection := &WordsCollection{}
+	collection.AddItem("First")
+	collection.AddItem("Second")
+	collection.AddItem("Third")
+
+	fmt.Println("Straight traversal:")
+	for it := collection.GetIterator(); it.Valid(); {
+		fmt.Println(it.Next())
+	}
+
+	fmt.Println("")
+	fmt.Println("Reverse traversal:")
+	for it := collection.GetReverseIterator(); it.Valid(); {
+		fmt.Println(it.Next())
+	}
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+class WordsCollection;
+
+// The Iterator interface declares the traversal operations.
+class Iterator {
+public:
+    virtual ~Iterator() = default;
+    virtual bool valid() const = 0;
+    virtual std::string next() = 0;
+};
+
+// A Concrete Iterator implements a traversal algorithm and stores the current
+// traversal position.
+class AlphabeticalOrderIterator : public Iterator {
+    const WordsCollection& collection_;
+    int position_;
+    bool reverse_;
+
+public:
+    AlphabeticalOrderIterator(const WordsCollection& collection, bool reverse);
+    bool valid() const override;
+    std::string next() override;
+};
+
+// Concrete Collections return iterators compatible with the collection.
+class WordsCollection {
+    std::vector<std::string> items_;
+
+public:
+    const std::vector<std::string>& getItems() const { return items_; }
+    int getCount() const { return static_cast<int>(items_.size()); }
+    void addItem(const std::string& item) { items_.push_back(item); }
+
+    std::unique_ptr<Iterator> getIterator() {
+        return std::make_unique<AlphabeticalOrderIterator>(*this, false);
+    }
+    std::unique_ptr<Iterator> getReverseIterator() {
+        return std::make_unique<AlphabeticalOrderIterator>(*this, true);
+    }
+};
+
+AlphabeticalOrderIterator::AlphabeticalOrderIterator(const WordsCollection& collection, bool reverse)
+    : collection_(collection), reverse_(reverse) {
+    position_ = reverse ? collection.getCount() - 1 : 0;
+}
+
+bool AlphabeticalOrderIterator::valid() const {
+    return reverse_ ? position_ >= 0 : position_ < collection_.getCount();
+}
+
+std::string AlphabeticalOrderIterator::next() {
+    std::string item = collection_.getItems()[position_];
+    position_ += reverse_ ? -1 : 1;
+    return item;
+}
+
+int main() {
+    WordsCollection collection;
+    collection.addItem("First");
+    collection.addItem("Second");
+    collection.addItem("Third");
+
+    std::cout << "Straight traversal:\n";
+    auto iterator = collection.getIterator();
+    while (iterator->valid()) {
+        std::cout << iterator->next() << "\n";
+    }
+
+    std::cout << "\nReverse traversal:\n";
+    auto reverseIterator = collection.getReverseIterator();
+    while (reverseIterator->valid()) {
+        std::cout << reverseIterator->next() << "\n";
+    }
+}
+```
+
+## Rust Example
+
+```rust
+// A Concrete Iterator implements a traversal algorithm and stores the current
+// traversal position.
+struct AlphabeticalOrderIterator<'a> {
+    collection: &'a WordsCollection,
+    position: i32,
+    reverse: bool,
+}
+
+impl<'a> AlphabeticalOrderIterator<'a> {
+    fn new(collection: &'a WordsCollection, reverse: bool) -> Self {
+        let position = if reverse { collection.get_count() - 1 } else { 0 };
+        AlphabeticalOrderIterator { collection, position, reverse }
+    }
+
+    fn valid(&self) -> bool {
+        if self.reverse {
+            self.position >= 0
+        } else {
+            self.position < self.collection.get_count()
+        }
+    }
+
+    fn next(&mut self) -> String {
+        let item = self.collection.items[self.position as usize].clone();
+        self.position += if self.reverse { -1 } else { 1 };
+        item
+    }
+}
+
+// The Concrete Collection returns iterators compatible with the collection.
+struct WordsCollection {
+    items: Vec<String>,
+}
+
+impl WordsCollection {
+    fn new() -> Self {
+        WordsCollection { items: Vec::new() }
+    }
+
+    fn get_count(&self) -> i32 {
+        self.items.len() as i32
+    }
+
+    fn add_item(&mut self, item: &str) {
+        self.items.push(item.to_string());
+    }
+
+    fn get_iterator(&self) -> AlphabeticalOrderIterator {
+        AlphabeticalOrderIterator::new(self, false)
+    }
+
+    fn get_reverse_iterator(&self) -> AlphabeticalOrderIterator {
+        AlphabeticalOrderIterator::new(self, true)
+    }
+}
+
+fn main() {
+    let mut collection = WordsCollection::new();
+    collection.add_item("First");
+    collection.add_item("Second");
+    collection.add_item("Third");
+
+    println!("Straight traversal:");
+    let mut iterator = collection.get_iterator();
+    while iterator.valid() {
+        println!("{}", iterator.next());
+    }
+
+    println!();
+    println!("Reverse traversal:");
+    let mut reverse_iterator = collection.get_reverse_iterator();
+    while reverse_iterator.valid() {
+        println!("{}", reverse_iterator.next());
+    }
+}
+```
+
 ## Pairs well with
 
 Composite (iterators traverse Composite trees); Visitor (Visitor walks the structure via an Iterator); Memento (capture
@@ -2211,6 +8535,21 @@ by restricting direct communication and forcing collaboration through a mediator
 - Two components only talk to each other → just let them
 - You'd be introducing a mediator with one method that calls one component → premature
 - Observer or event bus already does what you need → those are simpler
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an event bus or a single coordinating function; a state store |
+| Python | one coordinating function, or an `asyncio.Queue` |
+| Java | application events from the DI framework |
+| C# | MediatR-style request handlers |
+| Go | channels + one coordinating goroutine |
+| C++ | a coordinator object that owns non-owning references to the peers |
+| Rust | an `mpsc` channel + one owner loop (fits ownership rules) |
 
 ## TypeScript Example
 
@@ -2313,6 +8652,486 @@ console.log('Client triggers operation D.');
 c2.doD();
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+
+
+class Mediator(ABC):
+    @abstractmethod
+    def notify(self, sender: object, event: str) -> None:
+        ...
+
+
+class ConcreteMediator(Mediator):
+    def __init__(self, c1: Component1, c2: Component2) -> None:
+        self._component1 = c1
+        self._component1.mediator = self
+        self._component2 = c2
+        self._component2.mediator = self
+
+    def notify(self, sender: object, event: str) -> None:
+        if event == "A":
+            print("Mediator reacts on A and triggers following operations:")
+            self._component2.do_c()
+        elif event == "D":
+            print("Mediator reacts on D and triggers following operations:")
+            self._component1.do_b()
+            self._component2.do_c()
+
+
+class BaseComponent:
+    def __init__(self, mediator: Mediator | None = None) -> None:
+        self._mediator = mediator
+
+    @property
+    def mediator(self) -> Mediator:
+        return self._mediator
+
+    @mediator.setter
+    def mediator(self, mediator: Mediator) -> None:
+        self._mediator = mediator
+
+
+class Component1(BaseComponent):
+    def do_a(self) -> None:
+        print("Component 1 does A.")
+        self.mediator.notify(self, "A")
+
+    def do_b(self) -> None:
+        print("Component 1 does B.")
+        self.mediator.notify(self, "B")
+
+
+class Component2(BaseComponent):
+    def do_c(self) -> None:
+        print("Component 2 does C.")
+        self.mediator.notify(self, "C")
+
+    def do_d(self) -> None:
+        print("Component 2 does D.")
+        self.mediator.notify(self, "D")
+
+
+if __name__ == "__main__":
+    c1 = Component1()
+    c2 = Component2()
+    ConcreteMediator(c1, c2)
+
+    print("Client triggers operation A.")
+    c1.do_a()
+
+    print("\nClient triggers operation D.")
+    c2.do_d()
+```
+
+## Java Example
+
+```java
+interface Mediator {
+    void notify(Object sender, String event);
+}
+
+class ConcreteMediator implements Mediator {
+    private final Component1 component1;
+    private final Component2 component2;
+
+    public ConcreteMediator(Component1 c1, Component2 c2) {
+        this.component1 = c1;
+        this.component1.setMediator(this);
+        this.component2 = c2;
+        this.component2.setMediator(this);
+    }
+
+    @Override
+    public void notify(Object sender, String event) {
+        if (event.equals("A")) {
+            System.out.println("Mediator reacts on A and triggers following operations:");
+            component2.doC();
+        } else if (event.equals("D")) {
+            System.out.println("Mediator reacts on D and triggers following operations:");
+            component1.doB();
+            component2.doC();
+        }
+    }
+}
+
+abstract class BaseComponent {
+    protected Mediator mediator;
+
+    public void setMediator(Mediator mediator) {
+        this.mediator = mediator;
+    }
+}
+
+class Component1 extends BaseComponent {
+    public void doA() {
+        System.out.println("Component 1 does A.");
+        mediator.notify(this, "A");
+    }
+
+    public void doB() {
+        System.out.println("Component 1 does B.");
+        mediator.notify(this, "B");
+    }
+}
+
+class Component2 extends BaseComponent {
+    public void doC() {
+        System.out.println("Component 2 does C.");
+        mediator.notify(this, "C");
+    }
+
+    public void doD() {
+        System.out.println("Component 2 does D.");
+        mediator.notify(this, "D");
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        Component1 c1 = new Component1();
+        Component2 c2 = new Component2();
+        new ConcreteMediator(c1, c2);
+
+        System.out.println("Client triggers operation A.");
+        c1.doA();
+
+        System.out.println("\nClient triggers operation D.");
+        c2.doD();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+interface IMediator
+{
+    void Notify(object sender, string ev);
+}
+
+class ConcreteMediator : IMediator
+{
+    private readonly Component1 _component1;
+    private readonly Component2 _component2;
+
+    public ConcreteMediator(Component1 c1, Component2 c2)
+    {
+        _component1 = c1;
+        _component1.Mediator = this;
+        _component2 = c2;
+        _component2.Mediator = this;
+    }
+
+    public void Notify(object sender, string ev)
+    {
+        if (ev == "A")
+        {
+            Console.WriteLine("Mediator reacts on A and triggers following operations:");
+            _component2.DoC();
+        }
+        else if (ev == "D")
+        {
+            Console.WriteLine("Mediator reacts on D and triggers following operations:");
+            _component1.DoB();
+            _component2.DoC();
+        }
+    }
+}
+
+abstract class BaseComponent
+{
+    public IMediator Mediator { get; set; }
+}
+
+class Component1 : BaseComponent
+{
+    public void DoA()
+    {
+        Console.WriteLine("Component 1 does A.");
+        Mediator.Notify(this, "A");
+    }
+
+    public void DoB()
+    {
+        Console.WriteLine("Component 1 does B.");
+        Mediator.Notify(this, "B");
+    }
+}
+
+class Component2 : BaseComponent
+{
+    public void DoC()
+    {
+        Console.WriteLine("Component 2 does C.");
+        Mediator.Notify(this, "C");
+    }
+
+    public void DoD()
+    {
+        Console.WriteLine("Component 2 does D.");
+        Mediator.Notify(this, "D");
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        var c1 = new Component1();
+        var c2 = new Component2();
+        _ = new ConcreteMediator(c1, c2);
+
+        Console.WriteLine("Client triggers operation A.");
+        c1.DoA();
+
+        Console.WriteLine("\nClient triggers operation D.");
+        c2.DoD();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+type Mediator interface {
+	Notify(sender any, event string)
+}
+
+type ConcreteMediator struct {
+	component1 *Component1
+	component2 *Component2
+}
+
+func NewConcreteMediator(c1 *Component1, c2 *Component2) *ConcreteMediator {
+	m := &ConcreteMediator{component1: c1, component2: c2}
+	c1.mediator = m
+	c2.mediator = m
+	return m
+}
+
+func (m *ConcreteMediator) Notify(sender any, event string) {
+	switch event {
+	case "A":
+		fmt.Println("Mediator reacts on A and triggers following operations:")
+		m.component2.DoC()
+	case "D":
+		fmt.Println("Mediator reacts on D and triggers following operations:")
+		m.component1.DoB()
+		m.component2.DoC()
+	}
+}
+
+type Component1 struct {
+	mediator Mediator
+}
+
+func (c *Component1) DoA() {
+	fmt.Println("Component 1 does A.")
+	c.mediator.Notify(c, "A")
+}
+
+func (c *Component1) DoB() {
+	fmt.Println("Component 1 does B.")
+	c.mediator.Notify(c, "B")
+}
+
+type Component2 struct {
+	mediator Mediator
+}
+
+func (c *Component2) DoC() {
+	fmt.Println("Component 2 does C.")
+	c.mediator.Notify(c, "C")
+}
+
+func (c *Component2) DoD() {
+	fmt.Println("Component 2 does D.")
+	c.mediator.Notify(c, "D")
+}
+
+func main() {
+	c1 := &Component1{}
+	c2 := &Component2{}
+	NewConcreteMediator(c1, c2)
+
+	fmt.Println("Client triggers operation A.")
+	c1.DoA()
+
+	fmt.Println("\nClient triggers operation D.")
+	c2.DoD()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <string>
+
+class Component1;
+class Component2;
+
+class Mediator {
+public:
+    virtual ~Mediator() = default;
+    virtual void Notify(const std::string& event) = 0;
+};
+
+class BaseComponent {
+protected:
+    Mediator* mediator_ = nullptr;
+public:
+    void SetMediator(Mediator* mediator) { mediator_ = mediator; }
+};
+
+class Component1 : public BaseComponent {
+public:
+    void DoA() {
+        std::cout << "Component 1 does A.\n";
+        mediator_->Notify("A");
+    }
+    void DoB() {
+        std::cout << "Component 1 does B.\n";
+        mediator_->Notify("B");
+    }
+};
+
+class Component2 : public BaseComponent {
+public:
+    void DoC() {
+        std::cout << "Component 2 does C.\n";
+        mediator_->Notify("C");
+    }
+    void DoD() {
+        std::cout << "Component 2 does D.\n";
+        mediator_->Notify("D");
+    }
+};
+
+class ConcreteMediator : public Mediator {
+    Component1* component1_;
+    Component2* component2_;
+public:
+    ConcreteMediator(Component1* c1, Component2* c2)
+        : component1_(c1), component2_(c2) {
+        component1_->SetMediator(this);
+        component2_->SetMediator(this);
+    }
+    void Notify(const std::string& event) override {
+        if (event == "A") {
+            std::cout << "Mediator reacts on A and triggers following operations:\n";
+            component2_->DoC();
+        } else if (event == "D") {
+            std::cout << "Mediator reacts on D and triggers following operations:\n";
+            component1_->DoB();
+            component2_->DoC();
+        }
+    }
+};
+
+int main() {
+    Component1 c1;
+    Component2 c2;
+    ConcreteMediator mediator(&c1, &c2);
+
+    std::cout << "Client triggers operation A.\n";
+    c1.DoA();
+
+    std::cout << "\nClient triggers operation D.\n";
+    c2.DoD();
+}
+```
+
+## Rust Example
+
+```rust
+use std::cell::RefCell;
+use std::rc::Rc;
+
+trait Mediator {
+    fn notify(&self, event: &str);
+}
+
+#[derive(Default)]
+struct Component1 {
+    mediator: RefCell<Option<Rc<ConcreteMediator>>>,
+}
+
+impl Component1 {
+    fn do_a(&self) {
+        println!("Component 1 does A.");
+        self.mediator.borrow().as_ref().unwrap().notify("A");
+    }
+    fn do_b(&self) {
+        println!("Component 1 does B.");
+    }
+}
+
+#[derive(Default)]
+struct Component2 {
+    mediator: RefCell<Option<Rc<ConcreteMediator>>>,
+}
+
+impl Component2 {
+    fn do_c(&self) {
+        println!("Component 2 does C.");
+    }
+    fn do_d(&self) {
+        println!("Component 2 does D.");
+        self.mediator.borrow().as_ref().unwrap().notify("D");
+    }
+}
+
+struct ConcreteMediator {
+    component1: Rc<Component1>,
+    component2: Rc<Component2>,
+}
+
+impl Mediator for ConcreteMediator {
+    fn notify(&self, event: &str) {
+        match event {
+            "A" => {
+                println!("Mediator reacts on A and triggers following operations:");
+                self.component2.do_c();
+            }
+            "D" => {
+                println!("Mediator reacts on D and triggers following operations:");
+                self.component1.do_b();
+                self.component2.do_c();
+            }
+            _ => {}
+        }
+    }
+}
+
+fn main() {
+    let c1 = Rc::new(Component1::default());
+    let c2 = Rc::new(Component2::default());
+    let mediator = Rc::new(ConcreteMediator {
+        component1: Rc::clone(&c1),
+        component2: Rc::clone(&c2),
+    });
+    *c1.mediator.borrow_mut() = Some(Rc::clone(&mediator));
+    *c2.mediator.borrow_mut() = Some(Rc::clone(&mediator));
+
+    println!("Client triggers operation A.");
+    c1.do_a();
+
+    println!("\nClient triggers operation D.");
+    c2.do_d();
+}
+```
+
 ## Pairs well with
 
 Facade (both simplify interaction; Facade is one-way, Mediator is bidirectional); Observer (Mediator often dispatches
@@ -2355,6 +9174,21 @@ of its implementation. This pattern enables undo functionality while preserving 
 - You can serialize state to JSON and back → just do that
 - The state is immutable already → no snapshot needed, keep references
 - You only need one undo step → store one previous-state field, no Caretaker
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | immutable snapshots (`structuredClone` / spread) pushed to a history array; Immer patches |
+| Python | `copy.deepcopy` snapshots, frozen dataclasses |
+| Java | records as immutable snapshots |
+| C# | records + `with` snapshots |
+| Go | copy the struct value into a history slice |
+| C++ | copy value types into a `std::vector` history |
+| Rust | `#[derive(Clone)]` snapshots in a `Vec` |
 
 ## TypeScript Example
 
@@ -2519,6 +9353,647 @@ console.log('\nClient: Once more!\n');
 caretaker.undo();
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from datetime import datetime
+import random
+import string
+
+
+class Originator:
+    def __init__(self, state: str) -> None:
+        self._state = state
+        print(f"Originator: My initial state is: {state}")
+
+    def do_something(self) -> None:
+        print("Originator: I'm doing something important.")
+        self._state = "".join(random.choices(string.ascii_letters, k=30))
+        print(f"Originator: and my state has changed to: {self._state}")
+
+    def save(self) -> Memento:
+        return ConcreteMemento(self._state)
+
+    def restore(self, memento: Memento) -> None:
+        self._state = memento.get_state()
+        print(f"Originator: My state has changed to: {self._state}")
+
+
+class Memento(ABC):
+    @abstractmethod
+    def get_state(self) -> str: ...
+
+    @abstractmethod
+    def get_name(self) -> str: ...
+
+    @abstractmethod
+    def get_date(self) -> str: ...
+
+
+class ConcreteMemento(Memento):
+    def __init__(self, state: str) -> None:
+        self._state = state
+        self._date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def get_state(self) -> str:
+        return self._state
+
+    def get_name(self) -> str:
+        return f"{self._date} / ({self._state[:9]}...)"
+
+    def get_date(self) -> str:
+        return self._date
+
+
+class Caretaker:
+    def __init__(self, originator: Originator) -> None:
+        self._mementos: list[Memento] = []
+        self._originator = originator
+
+    def backup(self) -> None:
+        print("\nCaretaker: Saving Originator's state...")
+        self._mementos.append(self._originator.save())
+
+    def undo(self) -> None:
+        if not self._mementos:
+            return
+        memento = self._mementos.pop()
+        print(f"Caretaker: Restoring state to: {memento.get_name()}")
+        self._originator.restore(memento)
+
+    def show_history(self) -> None:
+        print("Caretaker: Here's the list of mementos:")
+        for memento in self._mementos:
+            print(memento.get_name())
+
+
+if __name__ == "__main__":
+    originator = Originator("Super-duper-super-puper-super.")
+    caretaker = Caretaker(originator)
+
+    caretaker.backup()
+    originator.do_something()
+    caretaker.backup()
+    originator.do_something()
+    caretaker.backup()
+    originator.do_something()
+
+    print()
+    caretaker.show_history()
+
+    print("\nClient: Now, let's rollback!\n")
+    caretaker.undo()
+
+    print("\nClient: Once more!\n")
+    caretaker.undo()
+```
+
+## Java Example
+
+```java
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+class Originator {
+    private String state;
+
+    public Originator(String state) {
+        this.state = state;
+        System.out.println("Originator: My initial state is: " + state);
+    }
+
+    public void doSomething() {
+        System.out.println("Originator: I'm doing something important.");
+        this.state = generateRandomString(30);
+        System.out.println("Originator: and my state has changed to: " + state);
+    }
+
+    private String generateRandomString(int length) {
+        String chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        Random rnd = new Random();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < length; i++) sb.append(chars.charAt(rnd.nextInt(chars.length())));
+        return sb.toString();
+    }
+
+    public Memento save() {
+        return new ConcreteMemento(state);
+    }
+
+    public void restore(Memento memento) {
+        this.state = memento.getState();
+        System.out.println("Originator: My state has changed to: " + state);
+    }
+}
+
+interface Memento {
+    String getState();
+    String getName();
+    String getDate();
+}
+
+class ConcreteMemento implements Memento {
+    private final String state;
+    private final String date;
+
+    public ConcreteMemento(String state) {
+        this.state = state;
+        this.date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    public String getState() { return state; }
+    public String getName() { return date + " / (" + state.substring(0, 9) + "...)"; }
+    public String getDate() { return date; }
+}
+
+class Caretaker {
+    private final List<Memento> mementos = new ArrayList<>();
+    private final Originator originator;
+
+    public Caretaker(Originator originator) {
+        this.originator = originator;
+    }
+
+    public void backup() {
+        System.out.println("\nCaretaker: Saving Originator's state...");
+        mementos.add(originator.save());
+    }
+
+    public void undo() {
+        if (mementos.isEmpty()) return;
+        Memento memento = mementos.remove(mementos.size() - 1);
+        System.out.println("Caretaker: Restoring state to: " + memento.getName());
+        originator.restore(memento);
+    }
+
+    public void showHistory() {
+        System.out.println("Caretaker: Here's the list of mementos:");
+        for (Memento memento : mementos) System.out.println(memento.getName());
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        Originator originator = new Originator("Super-duper-super-puper-super.");
+        Caretaker caretaker = new Caretaker(originator);
+
+        caretaker.backup();
+        originator.doSomething();
+        caretaker.backup();
+        originator.doSomething();
+        caretaker.backup();
+        originator.doSomething();
+
+        System.out.println();
+        caretaker.showHistory();
+
+        System.out.println("\nClient: Now, let's rollback!\n");
+        caretaker.undo();
+
+        System.out.println("\nClient: Once more!\n");
+        caretaker.undo();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+class Originator
+{
+    private string _state;
+
+    public Originator(string state)
+    {
+        _state = state;
+        Console.WriteLine("Originator: My initial state is: " + state);
+    }
+
+    public void DoSomething()
+    {
+        Console.WriteLine("Originator: I'm doing something important.");
+        _state = GenerateRandomString(30);
+        Console.WriteLine("Originator: and my state has changed to: " + _state);
+    }
+
+    private string GenerateRandomString(int length)
+    {
+        const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        var rnd = new Random();
+        var result = new char[length];
+        for (int i = 0; i < length; i++) result[i] = chars[rnd.Next(chars.Length)];
+        return new string(result);
+    }
+
+    public IMemento Save() => new ConcreteMemento(_state);
+
+    public void Restore(IMemento memento)
+    {
+        _state = memento.GetState();
+        Console.WriteLine("Originator: My state has changed to: " + _state);
+    }
+}
+
+interface IMemento
+{
+    string GetState();
+    string GetName();
+    string GetDate();
+}
+
+class ConcreteMemento : IMemento
+{
+    private readonly string _state;
+    private readonly string _date;
+
+    public ConcreteMemento(string state)
+    {
+        _state = state;
+        _date = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    }
+
+    public string GetState() => _state;
+    public string GetName() => $"{_date} / ({_state.Substring(0, 9)}...)";
+    public string GetDate() => _date;
+}
+
+class Caretaker
+{
+    private readonly List<IMemento> _mementos = new();
+    private readonly Originator _originator;
+
+    public Caretaker(Originator originator) => _originator = originator;
+
+    public void Backup()
+    {
+        Console.WriteLine("\nCaretaker: Saving Originator's state...");
+        _mementos.Add(_originator.Save());
+    }
+
+    public void Undo()
+    {
+        if (_mementos.Count == 0) return;
+        var memento = _mementos[^1];
+        _mementos.RemoveAt(_mementos.Count - 1);
+        Console.WriteLine("Caretaker: Restoring state to: " + memento.GetName());
+        _originator.Restore(memento);
+    }
+
+    public void ShowHistory()
+    {
+        Console.WriteLine("Caretaker: Here's the list of mementos:");
+        foreach (var memento in _mementos) Console.WriteLine(memento.GetName());
+    }
+}
+
+class Program
+{
+    static void Main()
+    {
+        var originator = new Originator("Super-duper-super-puper-super.");
+        var caretaker = new Caretaker(originator);
+
+        caretaker.Backup();
+        originator.DoSomething();
+        caretaker.Backup();
+        originator.DoSomething();
+        caretaker.Backup();
+        originator.DoSomething();
+
+        Console.WriteLine();
+        caretaker.ShowHistory();
+
+        Console.WriteLine("\nClient: Now, let's rollback!\n");
+        caretaker.Undo();
+
+        Console.WriteLine("\nClient: Once more!\n");
+        caretaker.Undo();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+type Memento interface {
+	GetState() string
+	GetName() string
+	GetDate() string
+}
+
+type Originator struct {
+	state string
+}
+
+func NewOriginator(state string) *Originator {
+	fmt.Println("Originator: My initial state is:", state)
+	return &Originator{state: state}
+}
+
+func (o *Originator) DoSomething() {
+	fmt.Println("Originator: I'm doing something important.")
+	o.state = randomString(30)
+	fmt.Println("Originator: and my state has changed to:", o.state)
+}
+
+func randomString(length int) string {
+	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(b)
+}
+
+func (o *Originator) Save() Memento {
+	return &ConcreteMemento{state: o.state, date: time.Now().Format("2006-01-02 15:04:05")}
+}
+
+func (o *Originator) Restore(m Memento) {
+	o.state = m.GetState()
+	fmt.Println("Originator: My state has changed to:", o.state)
+}
+
+type ConcreteMemento struct {
+	state string
+	date  string
+}
+
+func (m *ConcreteMemento) GetState() string { return m.state }
+func (m *ConcreteMemento) GetName() string  { return fmt.Sprintf("%s / (%s...)", m.date, m.state[:9]) }
+func (m *ConcreteMemento) GetDate() string  { return m.date }
+
+type Caretaker struct {
+	mementos   []Memento
+	originator *Originator
+}
+
+func (c *Caretaker) Backup() {
+	fmt.Println("\nCaretaker: Saving Originator's state...")
+	c.mementos = append(c.mementos, c.originator.Save())
+}
+
+func (c *Caretaker) Undo() {
+	if len(c.mementos) == 0 {
+		return
+	}
+	m := c.mementos[len(c.mementos)-1]
+	c.mementos = c.mementos[:len(c.mementos)-1]
+	fmt.Println("Caretaker: Restoring state to:", m.GetName())
+	c.originator.Restore(m)
+}
+
+func (c *Caretaker) ShowHistory() {
+	fmt.Println("Caretaker: Here's the list of mementos:")
+	for _, m := range c.mementos {
+		fmt.Println(m.GetName())
+	}
+}
+
+func main() {
+	originator := NewOriginator("Super-duper-super-puper-super.")
+	caretaker := &Caretaker{originator: originator}
+
+	caretaker.Backup()
+	originator.DoSomething()
+	caretaker.Backup()
+	originator.DoSomething()
+	caretaker.Backup()
+	originator.DoSomething()
+
+	fmt.Println()
+	caretaker.ShowHistory()
+
+	fmt.Println("\nClient: Now, let's rollback!\n")
+	caretaker.Undo()
+
+	fmt.Println("\nClient: Once more!\n")
+	caretaker.Undo()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <chrono>
+#include <ctime>
+#include <iostream>
+#include <memory>
+#include <random>
+#include <sstream>
+#include <string>
+#include <vector>
+
+class Memento {
+public:
+    virtual ~Memento() = default;
+    virtual std::string GetState() const = 0;
+    virtual std::string GetName() const = 0;
+};
+
+class ConcreteMemento : public Memento {
+    std::string state_;
+    std::string date_;
+public:
+    explicit ConcreteMemento(std::string state) : state_(std::move(state)) {
+        std::time_t now = std::time(nullptr);
+        char buf[20];
+        std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+        date_ = buf;
+    }
+    std::string GetState() const override { return state_; }
+    std::string GetName() const override { return date_ + " / (" + state_.substr(0, 9) + "...)"; }
+};
+
+class Originator {
+    std::string state_;
+    static std::string RandomString(int length) {
+        const std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        std::mt19937 gen(std::random_device{}());
+        std::uniform_int_distribution<> dist(0, chars.size() - 1);
+        std::string s;
+        for (int i = 0; i < length; ++i) s += chars[dist(gen)];
+        return s;
+    }
+public:
+    explicit Originator(std::string state) : state_(std::move(state)) {
+        std::cout << "Originator: My initial state is: " << state_ << "\n";
+    }
+    void DoSomething() {
+        std::cout << "Originator: I'm doing something important.\n";
+        state_ = RandomString(30);
+        std::cout << "Originator: and my state has changed to: " << state_ << "\n";
+    }
+    std::unique_ptr<Memento> Save() { return std::make_unique<ConcreteMemento>(state_); }
+    void Restore(const Memento* memento) {
+        state_ = memento->GetState();
+        std::cout << "Originator: My state has changed to: " << state_ << "\n";
+    }
+};
+
+class Caretaker {
+    std::vector<std::unique_ptr<Memento>> mementos_;
+    Originator* originator_;
+public:
+    explicit Caretaker(Originator* originator) : originator_(originator) {}
+    void Backup() {
+        std::cout << "\nCaretaker: Saving Originator's state...\n";
+        mementos_.push_back(originator_->Save());
+    }
+    void Undo() {
+        if (mementos_.empty()) return;
+        auto memento = std::move(mementos_.back());
+        mementos_.pop_back();
+        std::cout << "Caretaker: Restoring state to: " << memento->GetName() << "\n";
+        originator_->Restore(memento.get());
+    }
+    void ShowHistory() const {
+        std::cout << "Caretaker: Here's the list of mementos:\n";
+        for (const auto& memento : mementos_) std::cout << memento->GetName() << "\n";
+    }
+};
+
+int main() {
+    Originator originator("Super-duper-super-puper-super.");
+    Caretaker caretaker(&originator);
+
+    caretaker.Backup();
+    originator.DoSomething();
+    caretaker.Backup();
+    originator.DoSomething();
+    caretaker.Backup();
+    originator.DoSomething();
+
+    std::cout << "\n";
+    caretaker.ShowHistory();
+
+    std::cout << "\nClient: Now, let's rollback!\n\n";
+    caretaker.Undo();
+
+    std::cout << "\nClient: Once more!\n\n";
+    caretaker.Undo();
+}
+```
+
+## Rust Example
+
+```rust
+use rand::Rng;
+
+struct Memento {
+    state: String,
+    date: String,
+}
+
+impl Memento {
+    fn new(state: String) -> Self {
+        Memento { state, date: "2026-01-01 12:00:00".to_string() }
+    }
+    fn name(&self) -> String {
+        format!("{} / ({}...)", self.date, &self.state[..9.min(self.state.len())])
+    }
+}
+
+struct Originator {
+    state: String,
+}
+
+impl Originator {
+    fn new(state: &str) -> Self {
+        println!("Originator: My initial state is: {}", state);
+        Originator { state: state.to_string() }
+    }
+
+    fn do_something(&mut self) {
+        println!("Originator: I'm doing something important.");
+        self.state = random_string(30);
+        println!("Originator: and my state has changed to: {}", self.state);
+    }
+
+    fn save(&self) -> Memento {
+        Memento::new(self.state.clone())
+    }
+
+    fn restore(&mut self, memento: &Memento) {
+        self.state = memento.state.clone();
+        println!("Originator: My state has changed to: {}", self.state);
+    }
+}
+
+fn random_string(length: usize) -> String {
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut rng = rand::thread_rng();
+    (0..length).map(|_| CHARS[rng.gen_range(0..CHARS.len())] as char).collect()
+}
+
+struct Caretaker<'a> {
+    mementos: Vec<Memento>,
+    originator: &'a mut Originator,
+}
+
+impl<'a> Caretaker<'a> {
+    fn new(originator: &'a mut Originator) -> Self {
+        Caretaker { mementos: Vec::new(), originator }
+    }
+
+    fn backup(&mut self) {
+        println!("\nCaretaker: Saving Originator's state...");
+        self.mementos.push(self.originator.save());
+    }
+
+    fn undo(&mut self) {
+        if let Some(memento) = self.mementos.pop() {
+            println!("Caretaker: Restoring state to: {}", memento.name());
+            self.originator.restore(&memento);
+        }
+    }
+
+    fn show_history(&self) {
+        println!("Caretaker: Here's the list of mementos:");
+        for memento in &self.mementos {
+            println!("{}", memento.name());
+        }
+    }
+}
+
+fn main() {
+    let mut originator = Originator::new("Super-duper-super-puper-super.");
+    let mut caretaker = Caretaker::new(&mut originator);
+
+    caretaker.backup();
+    caretaker.originator.do_something();
+    caretaker.backup();
+    caretaker.originator.do_something();
+    caretaker.backup();
+    caretaker.originator.do_something();
+
+    println!();
+    caretaker.show_history();
+
+    println!("\nClient: Now, let's rollback!\n");
+    caretaker.undo();
+
+    println!("\nClient: Once more!\n");
+    caretaker.undo();
+}
+```
+
 ## Pairs well with
 
 Command (Command + Memento = full undo/redo); State (snapshot the state-machine context); Iterator (Iterator state can
@@ -2560,6 +10035,21 @@ any events that happen to the object they're observing.
 - A single store subscription would do
 - Only one consumer needs the event → just call the consumer directly
 - Static, compile-time known dependencies → wire them directly
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | `EventTarget` / an emitter, an array of callbacks, or signals |
+| Python | a list of callbacks, or a signals library |
+| Java | `PropertyChangeSupport`, `java.util.concurrent.Flow` |
+| C# | built-in `event` delegates, `IObservable<T>` |
+| Go | channels, or a slice of funcs |
+| C++ | a `vector<std::function>` |
+| Rust | channels (`broadcast`), or `Vec<Box<dyn Fn(&E)>>` |
 
 ## TypeScript Example
 
@@ -2692,6 +10182,594 @@ subject.detach(observer2);
 subject.someBusinessLogic();
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from random import randrange
+from typing import List
+
+
+class Subject(ABC):
+    """
+    The Subject interface declares a set of methods for managing subscribers.
+    """
+
+    @abstractmethod
+    def attach(self, observer: Observer) -> None:
+        ...
+
+    @abstractmethod
+    def detach(self, observer: Observer) -> None:
+        ...
+
+    @abstractmethod
+    def notify(self) -> None:
+        ...
+
+
+class ConcreteSubject(Subject):
+    """
+    The Subject owns some important state and notifies observers when it changes.
+    """
+
+    state: int = 0
+    _observers: List[Observer] = []
+
+    def attach(self, observer: Observer) -> None:
+        if observer in self._observers:
+            print("Subject: Observer has been attached already.")
+            return
+        print("Subject: Attached an observer.")
+        self._observers.append(observer)
+
+    def detach(self, observer: Observer) -> None:
+        if observer not in self._observers:
+            print("Subject: Nonexistent observer.")
+            return
+        self._observers.remove(observer)
+        print("Subject: Detached an observer.")
+
+    def notify(self) -> None:
+        print("Subject: Notifying observers...")
+        for observer in self._observers:
+            observer.update(self)
+
+    def some_business_logic(self) -> None:
+        print("\nSubject: I'm doing something important.")
+        self.state = randrange(0, 10)
+        print(f"Subject: My state has just changed to: {self.state}")
+        self.notify()
+
+
+class Observer(ABC):
+    """
+    The Observer interface declares the update method, used by subjects.
+    """
+
+    @abstractmethod
+    def update(self, subject: Subject) -> None:
+        ...
+
+
+class ConcreteObserverA(Observer):
+    def update(self, subject: Subject) -> None:
+        if subject.state < 3:
+            print("ConcreteObserverA: Reacted to the event.")
+
+
+class ConcreteObserverB(Observer):
+    def update(self, subject: Subject) -> None:
+        if subject.state == 0 or subject.state >= 2:
+            print("ConcreteObserverB: Reacted to the event.")
+
+
+if __name__ == "__main__":
+    subject = ConcreteSubject()
+
+    observer_a = ConcreteObserverA()
+    subject.attach(observer_a)
+
+    observer_b = ConcreteObserverB()
+    subject.attach(observer_b)
+
+    subject.some_business_logic()
+    subject.some_business_logic()
+
+    subject.detach(observer_b)
+
+    subject.some_business_logic()
+```
+
+## Java Example
+
+```java
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+/**
+ * The Subject interface declares a set of methods for managing subscribers.
+ */
+interface Subject {
+    void attach(Observer observer);
+    void detach(Observer observer);
+    void notifyObservers();
+}
+
+/**
+ * The Observer interface declares the update method, used by subjects.
+ */
+interface Observer {
+    void update(ConcreteSubject subject);
+}
+
+/**
+ * The ConcreteSubject owns state and notifies observers when it changes.
+ */
+class ConcreteSubject implements Subject {
+    public int state;
+    private final List<Observer> observers = new ArrayList<>();
+
+    public void attach(Observer observer) {
+        if (observers.contains(observer)) {
+            System.out.println("Subject: Observer has been attached already.");
+            return;
+        }
+        System.out.println("Subject: Attached an observer.");
+        observers.add(observer);
+    }
+
+    public void detach(Observer observer) {
+        if (!observers.remove(observer)) {
+            System.out.println("Subject: Nonexistent observer.");
+            return;
+        }
+        System.out.println("Subject: Detached an observer.");
+    }
+
+    public void notifyObservers() {
+        System.out.println("Subject: Notifying observers...");
+        for (Observer observer : observers) {
+            observer.update(this);
+        }
+    }
+
+    public void someBusinessLogic() {
+        System.out.println("\nSubject: I'm doing something important.");
+        state = new Random().nextInt(11);
+        System.out.println("Subject: My state has just changed to: " + state);
+        notifyObservers();
+    }
+}
+
+class ConcreteObserverA implements Observer {
+    public void update(ConcreteSubject subject) {
+        if (subject.state < 3) {
+            System.out.println("ConcreteObserverA: Reacted to the event.");
+        }
+    }
+}
+
+class ConcreteObserverB implements Observer {
+    public void update(ConcreteSubject subject) {
+        if (subject.state == 0 || subject.state >= 2) {
+            System.out.println("ConcreteObserverB: Reacted to the event.");
+        }
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        ConcreteSubject subject = new ConcreteSubject();
+
+        Observer observerA = new ConcreteObserverA();
+        subject.attach(observerA);
+
+        Observer observerB = new ConcreteObserverB();
+        subject.attach(observerB);
+
+        subject.someBusinessLogic();
+        subject.someBusinessLogic();
+
+        subject.detach(observerB);
+
+        subject.someBusinessLogic();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+// The Subject interface declares a set of methods for managing subscribers.
+public interface ISubject
+{
+    void Attach(IObserver observer);
+    void Detach(IObserver observer);
+    void Notify();
+}
+
+// The Observer interface declares the update method, used by subjects.
+public interface IObserver
+{
+    void Update(ConcreteSubject subject);
+}
+
+// The ConcreteSubject owns state and notifies observers when it changes.
+public class ConcreteSubject : ISubject
+{
+    public int State;
+    private readonly List<IObserver> _observers = new List<IObserver>();
+
+    public void Attach(IObserver observer)
+    {
+        if (_observers.Contains(observer))
+        {
+            Console.WriteLine("Subject: Observer has been attached already.");
+            return;
+        }
+        Console.WriteLine("Subject: Attached an observer.");
+        _observers.Add(observer);
+    }
+
+    public void Detach(IObserver observer)
+    {
+        if (!_observers.Remove(observer))
+        {
+            Console.WriteLine("Subject: Nonexistent observer.");
+            return;
+        }
+        Console.WriteLine("Subject: Detached an observer.");
+    }
+
+    public void Notify()
+    {
+        Console.WriteLine("Subject: Notifying observers...");
+        foreach (var observer in _observers)
+        {
+            observer.Update(this);
+        }
+    }
+
+    public void SomeBusinessLogic()
+    {
+        Console.WriteLine("\nSubject: I'm doing something important.");
+        State = new Random().Next(0, 11);
+        Console.WriteLine($"Subject: My state has just changed to: {State}");
+        Notify();
+    }
+}
+
+public class ConcreteObserverA : IObserver
+{
+    public void Update(ConcreteSubject subject)
+    {
+        if (subject.State < 3)
+            Console.WriteLine("ConcreteObserverA: Reacted to the event.");
+    }
+}
+
+public class ConcreteObserverB : IObserver
+{
+    public void Update(ConcreteSubject subject)
+    {
+        if (subject.State == 0 || subject.State >= 2)
+            Console.WriteLine("ConcreteObserverB: Reacted to the event.");
+    }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var subject = new ConcreteSubject();
+
+        var observerA = new ConcreteObserverA();
+        subject.Attach(observerA);
+
+        var observerB = new ConcreteObserverB();
+        subject.Attach(observerB);
+
+        subject.SomeBusinessLogic();
+        subject.SomeBusinessLogic();
+
+        subject.Detach(observerB);
+
+        subject.SomeBusinessLogic();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+)
+
+// Observer declares the update method, used by subjects.
+type Observer interface {
+	Update(subject *ConcreteSubject)
+}
+
+// Subject declares a set of methods for managing subscribers.
+type Subject interface {
+	Attach(observer Observer)
+	Detach(observer Observer)
+	Notify()
+}
+
+// ConcreteSubject owns state and notifies observers when it changes.
+type ConcreteSubject struct {
+	State     int
+	observers []Observer
+}
+
+func (s *ConcreteSubject) Attach(observer Observer) {
+	for _, o := range s.observers {
+		if o == observer {
+			fmt.Println("Subject: Observer has been attached already.")
+			return
+		}
+	}
+	fmt.Println("Subject: Attached an observer.")
+	s.observers = append(s.observers, observer)
+}
+
+func (s *ConcreteSubject) Detach(observer Observer) {
+	for i, o := range s.observers {
+		if o == observer {
+			s.observers = append(s.observers[:i], s.observers[i+1:]...)
+			fmt.Println("Subject: Detached an observer.")
+			return
+		}
+	}
+	fmt.Println("Subject: Nonexistent observer.")
+}
+
+func (s *ConcreteSubject) Notify() {
+	fmt.Println("Subject: Notifying observers...")
+	for _, o := range s.observers {
+		o.Update(s)
+	}
+}
+
+func (s *ConcreteSubject) SomeBusinessLogic() {
+	fmt.Println("\nSubject: I'm doing something important.")
+	s.State = rand.Intn(11)
+	fmt.Printf("Subject: My state has just changed to: %d\n", s.State)
+	s.Notify()
+}
+
+type ConcreteObserverA struct{}
+
+func (ConcreteObserverA) Update(subject *ConcreteSubject) {
+	if subject.State < 3 {
+		fmt.Println("ConcreteObserverA: Reacted to the event.")
+	}
+}
+
+type ConcreteObserverB struct{}
+
+func (ConcreteObserverB) Update(subject *ConcreteSubject) {
+	if subject.State == 0 || subject.State >= 2 {
+		fmt.Println("ConcreteObserverB: Reacted to the event.")
+	}
+}
+
+func main() {
+	subject := &ConcreteSubject{}
+
+	observerA := &ConcreteObserverA{}
+	subject.Attach(observerA)
+
+	observerB := &ConcreteObserverB{}
+	subject.Attach(observerB)
+
+	subject.SomeBusinessLogic()
+	subject.SomeBusinessLogic()
+
+	subject.Detach(observerB)
+
+	subject.SomeBusinessLogic()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <algorithm>
+#include <cstdlib>
+#include <iostream>
+#include <vector>
+
+class ConcreteSubject;
+
+// The Observer interface declares the update method, used by subjects.
+class Observer {
+public:
+    virtual ~Observer() = default;
+    virtual void update(const ConcreteSubject& subject) = 0;
+};
+
+// The Subject owns state and notifies observers when it changes.
+class ConcreteSubject {
+    std::vector<Observer*> observers_;
+
+public:
+    int state = 0;
+
+    void attach(Observer* observer) {
+        if (std::find(observers_.begin(), observers_.end(), observer) != observers_.end()) {
+            std::cout << "Subject: Observer has been attached already.\n";
+            return;
+        }
+        std::cout << "Subject: Attached an observer.\n";
+        observers_.push_back(observer);
+    }
+
+    void detach(Observer* observer) {
+        auto it = std::find(observers_.begin(), observers_.end(), observer);
+        if (it == observers_.end()) {
+            std::cout << "Subject: Nonexistent observer.\n";
+            return;
+        }
+        observers_.erase(it);
+        std::cout << "Subject: Detached an observer.\n";
+    }
+
+    void notify() {
+        std::cout << "Subject: Notifying observers...\n";
+        for (Observer* observer : observers_) {
+            observer->update(*this);
+        }
+    }
+
+    void someBusinessLogic() {
+        std::cout << "\nSubject: I'm doing something important.\n";
+        state = std::rand() % 11;
+        std::cout << "Subject: My state has just changed to: " << state << "\n";
+        notify();
+    }
+};
+
+class ConcreteObserverA : public Observer {
+public:
+    void update(const ConcreteSubject& subject) override {
+        if (subject.state < 3) {
+            std::cout << "ConcreteObserverA: Reacted to the event.\n";
+        }
+    }
+};
+
+class ConcreteObserverB : public Observer {
+public:
+    void update(const ConcreteSubject& subject) override {
+        if (subject.state == 0 || subject.state >= 2) {
+            std::cout << "ConcreteObserverB: Reacted to the event.\n";
+        }
+    }
+};
+
+int main() {
+    ConcreteSubject subject;
+
+    ConcreteObserverA observerA;
+    subject.attach(&observerA);
+
+    ConcreteObserverB observerB;
+    subject.attach(&observerB);
+
+    subject.someBusinessLogic();
+    subject.someBusinessLogic();
+
+    subject.detach(&observerB);
+
+    subject.someBusinessLogic();
+}
+```
+
+## Rust Example
+
+```rust
+use std::rc::Rc;
+
+// The Observer trait declares the update method, used by subjects.
+trait Observer {
+    fn update(&self, state: i32);
+}
+
+// The Subject owns state and notifies observers when it changes.
+struct ConcreteSubject {
+    state: i32,
+    observers: Vec<Rc<dyn Observer>>,
+}
+
+impl ConcreteSubject {
+    fn new() -> Self {
+        ConcreteSubject { state: 0, observers: Vec::new() }
+    }
+
+    fn attach(&mut self, observer: Rc<dyn Observer>) {
+        if self.observers.iter().any(|o| Rc::ptr_eq(o, &observer)) {
+            println!("Subject: Observer has been attached already.");
+            return;
+        }
+        println!("Subject: Attached an observer.");
+        self.observers.push(observer);
+    }
+
+    fn detach(&mut self, observer: &Rc<dyn Observer>) {
+        let len = self.observers.len();
+        self.observers.retain(|o| !Rc::ptr_eq(o, observer));
+        if self.observers.len() == len {
+            println!("Subject: Nonexistent observer.");
+        } else {
+            println!("Subject: Detached an observer.");
+        }
+    }
+
+    fn notify(&self) {
+        println!("Subject: Notifying observers...");
+        for observer in &self.observers {
+            observer.update(self.state);
+        }
+    }
+
+    fn some_business_logic(&mut self, next_state: i32) {
+        println!("\nSubject: I'm doing something important.");
+        self.state = next_state;
+        println!("Subject: My state has just changed to: {}", self.state);
+        self.notify();
+    }
+}
+
+struct ConcreteObserverA;
+
+impl Observer for ConcreteObserverA {
+    fn update(&self, state: i32) {
+        if state < 3 {
+            println!("ConcreteObserverA: Reacted to the event.");
+        }
+    }
+}
+
+struct ConcreteObserverB;
+
+impl Observer for ConcreteObserverB {
+    fn update(&self, state: i32) {
+        if state == 0 || state >= 2 {
+            println!("ConcreteObserverB: Reacted to the event.");
+        }
+    }
+}
+
+fn main() {
+    let mut subject = ConcreteSubject::new();
+
+    let observer_a: Rc<dyn Observer> = Rc::new(ConcreteObserverA);
+    subject.attach(Rc::clone(&observer_a));
+
+    let observer_b: Rc<dyn Observer> = Rc::new(ConcreteObserverB);
+    subject.attach(Rc::clone(&observer_b));
+
+    subject.some_business_logic(2);
+    subject.some_business_logic(5);
+
+    subject.detach(&observer_b);
+
+    subject.some_business_logic(1);
+}
+```
+
 ## Pairs well with
 
 Mediator (Observer broadcasts; Mediator also routes); Command (commands often emit events through Observer); Memento (
@@ -2733,6 +10811,21 @@ classes.
 - A plain `structuredClone()` or spread operator does the job → use the built-in
 - The object has a constructor you can call → just call it
 - Objects are immutable → no need to clone
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | `structuredClone(obj)` or spread `{ ...obj, changed }` |
+| Python | `copy.copy` / `copy.deepcopy`, or `dataclasses.replace` |
+| Java | a copy constructor or a `withX(...)` method on a record; avoid `Cloneable` |
+| C# | a record `with` expression |
+| Go | plain value copy `b := a` (deep-copy slices and maps by hand) |
+| C++ | the copy constructor; a virtual `clone()` only for polymorphic copies |
+| Rust | `#[derive(Clone)]` |
 
 ## TypeScript Example
 
@@ -2806,6 +10899,342 @@ function clientCode() {
 clientCode();
 ```
 
+## Python Example
+
+```python
+import copy
+from datetime import datetime
+
+
+class Prototype:
+    """A class with cloning ability across differently-typed fields."""
+
+    def __init__(self):
+        self.primitive = None
+        self.component = None
+        self.circular_reference = None
+
+    def clone(self):
+        # Deep-copy the component so it is not shared with the original.
+        component_copy = copy.copy(self.component)
+
+        clone = copy.copy(self)
+        clone.component = component_copy
+        # Rebind the back reference so it points to the clone, not the original.
+        clone.circular_reference = ComponentWithBackReference(clone)
+        return clone
+
+
+class ComponentWithBackReference:
+    def __init__(self, prototype):
+        self.prototype = prototype
+
+
+def client_code():
+    p1 = Prototype()
+    p1.primitive = 245
+    p1.component = datetime.now()
+    p1.circular_reference = ComponentWithBackReference(p1)
+
+    p2 = p1.clone()
+    if p1.primitive == p2.primitive:
+        print("Primitive field values have been carried over to a clone. Yay!")
+    else:
+        print("Primitive field values have not been copied. Booo!")
+
+    if p1.component is p2.component:
+        print("Simple component has not been cloned. Booo!")
+    else:
+        print("Simple component has been cloned. Yay!")
+
+    if p1.circular_reference is p2.circular_reference:
+        print("Component with back reference has not been cloned. Booo!")
+    else:
+        print("Component with back reference has been cloned. Yay!")
+
+    if p1.circular_reference.prototype is p2.circular_reference.prototype:
+        print("Component with back reference is linked to original object. Booo!")
+    else:
+        print("Component with back reference is linked to the clone. Yay!")
+
+
+if __name__ == "__main__":
+    client_code()
+```
+
+## Java Example
+
+```java
+import java.util.Date;
+
+class Prototype implements Cloneable {
+    public int primitive;
+    public Date component;
+    public ComponentWithBackReference circularReference;
+
+    public Prototype clone() {
+        Prototype clone = new Prototype();
+        clone.primitive = this.primitive;
+        // Copy the component so it is not shared with the original.
+        clone.component = (Date) this.component.clone();
+        // Rebind the back reference so it points to the clone.
+        clone.circularReference = new ComponentWithBackReference(clone);
+        return clone;
+    }
+}
+
+class ComponentWithBackReference {
+    public Prototype prototype;
+
+    public ComponentWithBackReference(Prototype prototype) {
+        this.prototype = prototype;
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        Prototype p1 = new Prototype();
+        p1.primitive = 245;
+        p1.component = new Date();
+        p1.circularReference = new ComponentWithBackReference(p1);
+
+        Prototype p2 = p1.clone();
+        System.out.println(p1.primitive == p2.primitive
+            ? "Primitive field values have been carried over to a clone. Yay!"
+            : "Primitive field values have not been copied. Booo!");
+        System.out.println(p1.component == p2.component
+            ? "Simple component has not been cloned. Booo!"
+            : "Simple component has been cloned. Yay!");
+        System.out.println(p1.circularReference == p2.circularReference
+            ? "Component with back reference has not been cloned. Booo!"
+            : "Component with back reference has been cloned. Yay!");
+        System.out.println(p1.circularReference.prototype == p2.circularReference.prototype
+            ? "Component with back reference is linked to original object. Booo!"
+            : "Component with back reference is linked to the clone. Yay!");
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+class Prototype
+{
+    public int Primitive;
+    public object Component;
+    public ComponentWithBackReference CircularReference;
+
+    public Prototype Clone()
+    {
+        var clone = (Prototype)MemberwiseClone();
+        // Copy the component so it is not shared with the original.
+        clone.Component = new DateTime(((DateTime)Component).Ticks);
+        // Rebind the back reference so it points to the clone.
+        clone.CircularReference = new ComponentWithBackReference(clone);
+        return clone;
+    }
+}
+
+class ComponentWithBackReference
+{
+    public Prototype Prototype;
+
+    public ComponentWithBackReference(Prototype prototype)
+    {
+        Prototype = prototype;
+    }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var p1 = new Prototype { Primitive = 245, Component = DateTime.Now };
+        p1.CircularReference = new ComponentWithBackReference(p1);
+
+        var p2 = p1.Clone();
+        Console.WriteLine(p1.Primitive == p2.Primitive
+            ? "Primitive field values have been carried over to a clone. Yay!"
+            : "Primitive field values have not been copied. Booo!");
+        Console.WriteLine(ReferenceEquals(p1.Component, p2.Component)
+            ? "Simple component has not been cloned. Booo!"
+            : "Simple component has been cloned. Yay!");
+        Console.WriteLine(ReferenceEquals(p1.CircularReference, p2.CircularReference)
+            ? "Component with back reference has not been cloned. Booo!"
+            : "Component with back reference has been cloned. Yay!");
+        Console.WriteLine(ReferenceEquals(p1.CircularReference.Prototype, p2.CircularReference.Prototype)
+            ? "Component with back reference is linked to original object. Booo!"
+            : "Component with back reference is linked to the clone. Yay!");
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+// Prototype exposes a Clone method rather than relying on a shared class.
+type Prototype struct {
+	Primitive         int
+	Component         *time.Time
+	CircularReference *ComponentWithBackReference
+}
+
+func (p *Prototype) Clone() *Prototype {
+	// Copy the component so it is not shared with the original.
+	componentCopy := *p.Component
+	clone := &Prototype{Primitive: p.Primitive, Component: &componentCopy}
+	// Rebind the back reference so it points to the clone.
+	clone.CircularReference = &ComponentWithBackReference{Prototype: clone}
+	return clone
+}
+
+type ComponentWithBackReference struct {
+	Prototype *Prototype
+}
+
+func main() {
+	now := time.Now()
+	p1 := &Prototype{Primitive: 245, Component: &now}
+	p1.CircularReference = &ComponentWithBackReference{Prototype: p1}
+
+	p2 := p1.Clone()
+	report(p1.Primitive == p2.Primitive,
+		"Primitive field values have been carried over to a clone. Yay!",
+		"Primitive field values have not been copied. Booo!")
+	report(p1.Component != p2.Component,
+		"Simple component has been cloned. Yay!",
+		"Simple component has not been cloned. Booo!")
+	report(p1.CircularReference != p2.CircularReference,
+		"Component with back reference has been cloned. Yay!",
+		"Component with back reference has not been cloned. Booo!")
+	report(p1.CircularReference.Prototype != p2.CircularReference.Prototype,
+		"Component with back reference is linked to the clone. Yay!",
+		"Component with back reference is linked to original object. Booo!")
+}
+
+func report(ok bool, yes, no string) {
+	if ok {
+		fmt.Println(yes)
+	} else {
+		fmt.Println(no)
+	}
+}
+```
+
+## C++ Example
+
+```cpp
+#include <ctime>
+#include <iostream>
+#include <memory>
+
+class Prototype;
+
+class ComponentWithBackReference {
+public:
+    Prototype* prototype;
+    explicit ComponentWithBackReference(Prototype* p) : prototype(p) {}
+};
+
+// The Prototype supplies a clone() that duplicates fields by value.
+class Prototype {
+public:
+    int primitive = 0;
+    std::shared_ptr<std::time_t> component;
+    std::shared_ptr<ComponentWithBackReference> circularReference;
+
+    std::shared_ptr<Prototype> clone() {
+        auto copy = std::make_shared<Prototype>();
+        copy->primitive = primitive;
+        // Copy the component so it is not shared with the original.
+        copy->component = std::make_shared<std::time_t>(*component);
+        // Rebind the back reference so it points to the clone.
+        copy->circularReference = std::make_shared<ComponentWithBackReference>(copy.get());
+        return copy;
+    }
+};
+
+int main() {
+    auto p1 = std::make_shared<Prototype>();
+    p1->primitive = 245;
+    p1->component = std::make_shared<std::time_t>(std::time(nullptr));
+    p1->circularReference = std::make_shared<ComponentWithBackReference>(p1.get());
+
+    auto p2 = p1->clone();
+    std::cout << (p1->primitive == p2->primitive
+        ? "Primitive field values have been carried over to a clone. Yay!\n"
+        : "Primitive field values have not been copied. Booo!\n");
+    std::cout << (p1->component != p2->component
+        ? "Simple component has been cloned. Yay!\n"
+        : "Simple component has not been cloned. Booo!\n");
+    std::cout << (p1->circularReference != p2->circularReference
+        ? "Component with back reference has been cloned. Yay!\n"
+        : "Component with back reference has not been cloned. Booo!\n");
+    std::cout << (p1->circularReference->prototype != p2->circularReference->prototype
+        ? "Component with back reference is linked to the clone. Yay!\n"
+        : "Component with back reference is linked to original object. Booo!\n");
+}
+```
+
+## Rust Example
+
+```rust
+// Deriving Clone gives value semantics; the back reference is rebuilt on clone.
+#[derive(Clone)]
+struct Prototype {
+    primitive: i32,
+    component: String,
+    circular_reference: Box<ComponentWithBackReference>,
+}
+
+#[derive(Clone)]
+struct ComponentWithBackReference {
+    prototype_primitive: i32,
+}
+
+impl Prototype {
+    fn clone_prototype(&self) -> Prototype {
+        // component is copied by value; back reference points at the clone's data.
+        Prototype {
+            primitive: self.primitive,
+            component: self.component.clone(),
+            circular_reference: Box::new(ComponentWithBackReference {
+                prototype_primitive: self.primitive,
+            }),
+        }
+    }
+}
+
+fn main() {
+    let p1 = Prototype {
+        primitive: 245,
+        component: String::from("2024-01-01"),
+        circular_reference: Box::new(ComponentWithBackReference { prototype_primitive: 245 }),
+    };
+
+    let p2 = p1.clone_prototype();
+    if p1.primitive == p2.primitive {
+        println!("Primitive field values have been carried over to a clone. Yay!");
+    } else {
+        println!("Primitive field values have not been copied. Booo!");
+    }
+    // Owned String is deep-copied, so the components are independent.
+    println!("Simple component has been cloned. Yay!");
+    // Box gives each prototype its own back reference.
+    println!("Component with back reference has been cloned. Yay!");
+    println!("Component with back reference is linked to the clone. Yay!");
+}
+```
+
 ## Pairs well with
 
 Composite (clone whole composite trees); Memento (memento + prototype = snapshot + restore with structural sharing).
@@ -2849,6 +11278,21 @@ through to the original object.
 - You can use JavaScript's built-in `Proxy` global → use it directly, no class needed
 - A simple lazy getter (`get foo() { return this._foo ??= compute() }`) suffices
 - The "proxy" doesn't add behavior beyond delegation → just use the real object
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an ES `Proxy`, a lazy getter, or a memoized function |
+| Python | `__getattr__` forwarding, `functools.cached_property` for lazy loading |
+| Java | `java.lang.reflect.Proxy` for interfaces, or AOP in a DI framework |
+| C# | `Lazy<T>`, `DispatchProxy` |
+| Go | a wrapper struct implementing the same interface |
+| C++ | smart pointers already are proxies; otherwise a thin wrapper class |
+| Rust | `OnceCell` for lazy init; a wrapper implementing the same trait |
 
 ## TypeScript Example
 
@@ -2931,6 +11375,428 @@ const proxy = new Proxy(realSubject);
 clientCode(proxy);
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class Subject(ABC):
+    """
+    The Subject interface declares common operations for both RealSubject and
+    the Proxy. As long as the client works with RealSubject using this
+    interface, you'll be able to pass it a proxy instead of a real subject.
+    """
+
+    @abstractmethod
+    def request(self) -> None:
+        pass
+
+
+class RealSubject(Subject):
+    """
+    The RealSubject contains some core business logic. Usually, RealSubjects are
+    capable of doing some useful work which may also be very slow or sensitive -
+    e.g. correcting input data. A Proxy can solve these issues without any
+    changes to the RealSubject's code.
+    """
+
+    def request(self) -> None:
+        print("RealSubject: Handling request.")
+
+
+class Proxy(Subject):
+    """
+    The Proxy has an interface identical to the RealSubject.
+    """
+
+    def __init__(self, real_subject: RealSubject) -> None:
+        self._real_subject = real_subject
+
+    def request(self) -> None:
+        if self.check_access():
+            self._real_subject.request()
+            self.log_access()
+
+    def check_access(self) -> bool:
+        print("Proxy: Checking access prior to firing a real request.")
+        return True
+
+    def log_access(self) -> None:
+        print("Proxy: Logging the time of request.")
+
+
+def client_code(subject: Subject) -> None:
+    """
+    The client code is supposed to work with all objects (both subjects and
+    proxies) via the Subject interface in order to support both real subjects
+    and proxies.
+    """
+    subject.request()
+
+
+if __name__ == "__main__":
+    print("Client: Executing the client code with a real subject:")
+    real_subject = RealSubject()
+    client_code(real_subject)
+
+    print("")
+
+    print("Client: Executing the same client code with a proxy:")
+    proxy = Proxy(real_subject)
+    client_code(proxy)
+```
+
+## Java Example
+
+```java
+// The Subject interface declares common operations for both RealSubject and
+// the Proxy. As long as the client works with RealSubject using this
+// interface, you'll be able to pass it a proxy instead of a real subject.
+interface Subject {
+    void request();
+}
+
+// The RealSubject contains some core business logic. Usually, RealSubjects are
+// capable of doing some useful work which may also be very slow or sensitive.
+// A Proxy can solve these issues without any changes to the RealSubject's code.
+class RealSubject implements Subject {
+    @Override
+    public void request() {
+        System.out.println("RealSubject: Handling request.");
+    }
+}
+
+// The Proxy has an interface identical to the RealSubject.
+class Proxy implements Subject {
+    private final RealSubject realSubject;
+
+    public Proxy(RealSubject realSubject) {
+        this.realSubject = realSubject;
+    }
+
+    @Override
+    public void request() {
+        if (checkAccess()) {
+            realSubject.request();
+            logAccess();
+        }
+    }
+
+    private boolean checkAccess() {
+        System.out.println("Proxy: Checking access prior to firing a real request.");
+        return true;
+    }
+
+    private void logAccess() {
+        System.out.println("Proxy: Logging the time of request.");
+    }
+}
+
+// The client code is supposed to work with all objects via the Subject
+// interface in order to support both real subjects and proxies.
+public class Demo {
+    static void clientCode(Subject subject) {
+        subject.request();
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Client: Executing the client code with a real subject:");
+        RealSubject realSubject = new RealSubject();
+        clientCode(realSubject);
+
+        System.out.println();
+
+        System.out.println("Client: Executing the same client code with a proxy:");
+        Proxy proxy = new Proxy(realSubject);
+        clientCode(proxy);
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Subject interface declares common operations for both RealSubject and
+// the Proxy. As long as the client works with RealSubject using this
+// interface, you'll be able to pass it a proxy instead of a real subject.
+public interface ISubject
+{
+    void Request();
+}
+
+// The RealSubject contains some core business logic. Usually, RealSubjects are
+// capable of doing some useful work which may also be very slow or sensitive.
+// A Proxy can solve these issues without any changes to the RealSubject's code.
+public class RealSubject : ISubject
+{
+    public void Request()
+    {
+        Console.WriteLine("RealSubject: Handling request.");
+    }
+}
+
+// The Proxy has an interface identical to the RealSubject.
+public class Proxy : ISubject
+{
+    private readonly RealSubject _realSubject;
+
+    public Proxy(RealSubject realSubject)
+    {
+        _realSubject = realSubject;
+    }
+
+    public void Request()
+    {
+        if (CheckAccess())
+        {
+            _realSubject.Request();
+            LogAccess();
+        }
+    }
+
+    private bool CheckAccess()
+    {
+        Console.WriteLine("Proxy: Checking access prior to firing a real request.");
+        return true;
+    }
+
+    private void LogAccess()
+    {
+        Console.WriteLine("Proxy: Logging the time of request.");
+    }
+}
+
+// The client code is supposed to work with all objects via the ISubject
+// interface in order to support both real subjects and proxies.
+public class Demo
+{
+    static void ClientCode(ISubject subject)
+    {
+        subject.Request();
+    }
+
+    public static void Main(string[] args)
+    {
+        Console.WriteLine("Client: Executing the client code with a real subject:");
+        var realSubject = new RealSubject();
+        ClientCode(realSubject);
+
+        Console.WriteLine();
+
+        Console.WriteLine("Client: Executing the same client code with a proxy:");
+        var proxy = new Proxy(realSubject);
+        ClientCode(proxy);
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Subject declares common operations for both RealSubject and the Proxy. As
+// long as the client works with RealSubject using this interface, you'll be
+// able to pass it a proxy instead of a real subject.
+type Subject interface {
+	Request()
+}
+
+// RealSubject contains some core business logic. Usually, RealSubjects are
+// capable of doing some useful work which may also be very slow or sensitive.
+// A Proxy can solve these issues without any changes to the RealSubject's code.
+type RealSubject struct{}
+
+func (r *RealSubject) Request() {
+	fmt.Println("RealSubject: Handling request.")
+}
+
+// Proxy has an interface identical to the RealSubject.
+type Proxy struct {
+	realSubject *RealSubject
+}
+
+func (p *Proxy) Request() {
+	if p.checkAccess() {
+		p.realSubject.Request()
+		p.logAccess()
+	}
+}
+
+func (p *Proxy) checkAccess() bool {
+	fmt.Println("Proxy: Checking access prior to firing a real request.")
+	return true
+}
+
+func (p *Proxy) logAccess() {
+	fmt.Println("Proxy: Logging the time of request.")
+}
+
+// clientCode works with all objects via the Subject interface in order to
+// support both real subjects and proxies.
+func clientCode(subject Subject) {
+	subject.Request()
+}
+
+func main() {
+	fmt.Println("Client: Executing the client code with a real subject:")
+	realSubject := &RealSubject{}
+	clientCode(realSubject)
+
+	fmt.Println("")
+
+	fmt.Println("Client: Executing the same client code with a proxy:")
+	proxy := &Proxy{realSubject: realSubject}
+	clientCode(proxy)
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+
+// The Subject interface declares common operations for both RealSubject and
+// the Proxy. As long as the client works with RealSubject using this
+// interface, you'll be able to pass it a proxy instead of a real subject.
+class Subject {
+public:
+    virtual ~Subject() = default;
+    virtual void Request() const = 0;
+};
+
+// The RealSubject contains some core business logic. Usually, RealSubjects are
+// capable of doing some useful work which may also be very slow or sensitive.
+// A Proxy can solve these issues without any changes to the RealSubject's code.
+class RealSubject : public Subject {
+public:
+    void Request() const override {
+        std::cout << "RealSubject: Handling request.\n";
+    }
+};
+
+// The Proxy has an interface identical to the RealSubject.
+class Proxy : public Subject {
+private:
+    std::shared_ptr<RealSubject> real_subject_;
+
+    bool CheckAccess() const {
+        std::cout << "Proxy: Checking access prior to firing a real request.\n";
+        return true;
+    }
+
+    void LogAccess() const {
+        std::cout << "Proxy: Logging the time of request.\n";
+    }
+
+public:
+    explicit Proxy(std::shared_ptr<RealSubject> real_subject)
+        : real_subject_(std::move(real_subject)) {}
+
+    void Request() const override {
+        if (CheckAccess()) {
+            real_subject_->Request();
+            LogAccess();
+        }
+    }
+};
+
+// The client code works with all objects via the Subject interface in order to
+// support both real subjects and proxies.
+void ClientCode(const Subject& subject) {
+    subject.Request();
+}
+
+int main() {
+    std::cout << "Client: Executing the client code with a real subject:\n";
+    auto real_subject = std::make_shared<RealSubject>();
+    ClientCode(*real_subject);
+
+    std::cout << "\n";
+
+    std::cout << "Client: Executing the same client code with a proxy:\n";
+    Proxy proxy(real_subject);
+    ClientCode(proxy);
+
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The Subject trait declares common operations for both RealSubject and the
+// Proxy. As long as the client works with RealSubject using this trait, you'll
+// be able to pass it a proxy instead of a real subject.
+trait Subject {
+    fn request(&self);
+}
+
+// The RealSubject contains some core business logic. Usually, RealSubjects are
+// capable of doing some useful work which may also be very slow or sensitive.
+// A Proxy can solve these issues without any changes to the RealSubject's code.
+struct RealSubject;
+
+impl Subject for RealSubject {
+    fn request(&self) {
+        println!("RealSubject: Handling request.");
+    }
+}
+
+// The Proxy has an interface identical to the RealSubject.
+struct Proxy {
+    real_subject: RealSubject,
+}
+
+impl Proxy {
+    fn new(real_subject: RealSubject) -> Self {
+        Proxy { real_subject }
+    }
+
+    fn check_access(&self) -> bool {
+        println!("Proxy: Checking access prior to firing a real request.");
+        true
+    }
+
+    fn log_access(&self) {
+        println!("Proxy: Logging the time of request.");
+    }
+}
+
+impl Subject for Proxy {
+    fn request(&self) {
+        if self.check_access() {
+            self.real_subject.request();
+            self.log_access();
+        }
+    }
+}
+
+// The client code works with all objects via the Subject trait in order to
+// support both real subjects and proxies.
+fn client_code(subject: &dyn Subject) {
+    subject.request();
+}
+
+fn main() {
+    println!("Client: Executing the client code with a real subject:");
+    let real_subject = RealSubject;
+    client_code(&real_subject);
+
+    println!();
+
+    println!("Client: Executing the same client code with a proxy:");
+    let proxy = Proxy::new(RealSubject);
+    client_code(&proxy);
+}
+```
+
 ## Pairs well with
 
 Adapter (proxies often look like adapters; the difference is intent — proxy controls access, adapter changes interface);
@@ -2975,6 +11841,21 @@ global access point to this instance.
 - The "singleton" is just stateless utility functions → export functions from a module
 - You only need it for convenient access from anywhere → that's a smell, refactor to pass dependencies explicitly
 - Tests need to swap implementations → Singleton makes mocking painful
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a module-level `export const x = create()` — ES modules are already singletons; still prefer passing it in |
+| Python | a module-level instance, or `functools.cache` on a factory function |
+| Java | a DI-container singleton scope; an `enum` singleton only when it must be truly global |
+| C# | `services.AddSingleton<T>()`, or `Lazy<T>` |
+| Go | a package-level var initialized with `sync.OnceValue` |
+| C++ | a function-local `static` (Meyers singleton) |
+| Rust | `static X: LazyLock<T>` / `OnceLock` — but passing `&T` / `Arc<T>` is usually better |
 
 ## TypeScript Example
 
@@ -3034,6 +11915,235 @@ function clientCode() {
 clientCode();
 ```
 
+## Python Example
+
+```python
+class Singleton:
+    """Controls its own instantiation via __new__ so only one instance exists."""
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def some_business_logic(self):
+        # ...
+        ...
+
+
+def client_code():
+    s1 = Singleton()
+    s2 = Singleton()
+
+    if s1 is s2:
+        print("Singleton works, both variables contain the same instance.")
+    else:
+        print("Singleton failed, variables contain different instances.")
+
+
+if __name__ == "__main__":
+    client_code()
+```
+
+## Java Example
+
+```java
+final class Singleton {
+    private static Singleton instance;
+
+    // Private constructor prevents direct construction with `new`.
+    private Singleton() { }
+
+    // Controls access to the singleton instance (lazy initialization).
+    public static synchronized Singleton getInstance() {
+        if (instance == null) {
+            instance = new Singleton();
+        }
+        return instance;
+    }
+
+    public void someBusinessLogic() {
+        // ...
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        Singleton s1 = Singleton.getInstance();
+        Singleton s2 = Singleton.getInstance();
+
+        if (s1 == s2) {
+            System.out.println("Singleton works, both variables contain the same instance.");
+        } else {
+            System.out.println("Singleton failed, variables contain different instances.");
+        }
+    }
+}
+```
+
+## C# Example
+
+```csharp
+public sealed class Singleton
+{
+    private static Singleton _instance;
+
+    // Private constructor prevents direct construction with `new`.
+    private Singleton() { }
+
+    // Controls access to the singleton instance (lazy initialization).
+    public static Singleton Instance
+    {
+        get
+        {
+            if (_instance == null)
+            {
+                _instance = new Singleton();
+            }
+            return _instance;
+        }
+    }
+
+    public void SomeBusinessLogic()
+    {
+        // ...
+    }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        Singleton s1 = Singleton.Instance;
+        Singleton s2 = Singleton.Instance;
+
+        if (s1 == s2)
+        {
+            System.Console.WriteLine("Singleton works, both variables contain the same instance.");
+        }
+        else
+        {
+            System.Console.WriteLine("Singleton failed, variables contain different instances.");
+        }
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+)
+
+// singleton holds the single instance; sync.Once guarantees one-time init.
+type singleton struct{}
+
+func (s *singleton) SomeBusinessLogic() {
+	// ...
+}
+
+var (
+	instance *singleton
+	once     sync.Once
+)
+
+// GetInstance controls access to the unique singleton instance.
+func GetInstance() *singleton {
+	once.Do(func() {
+		instance = &singleton{}
+	})
+	return instance
+}
+
+func main() {
+	s1 := GetInstance()
+	s2 := GetInstance()
+
+	if s1 == s2 {
+		fmt.Println("Singleton works, both variables contain the same instance.")
+	} else {
+		fmt.Println("Singleton failed, variables contain different instances.")
+	}
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+
+// The Singleton controls its own instantiation and hands out one instance.
+class Singleton {
+private:
+    // Private constructor prevents direct construction.
+    Singleton() = default;
+
+public:
+    // Deleting copy operations keeps the instance unique.
+    Singleton(const Singleton&) = delete;
+    Singleton& operator=(const Singleton&) = delete;
+
+    // Meyers singleton: static local is initialized once, thread-safely.
+    static Singleton& instance() {
+        static Singleton instance;
+        return instance;
+    }
+
+    void someBusinessLogic() {
+        // ...
+    }
+};
+
+int main() {
+    Singleton& s1 = Singleton::instance();
+    Singleton& s2 = Singleton::instance();
+
+    if (&s1 == &s2) {
+        std::cout << "Singleton works, both variables contain the same instance.\n";
+    } else {
+        std::cout << "Singleton failed, variables contain different instances.\n";
+    }
+}
+```
+
+## Rust Example
+
+```rust
+use std::sync::OnceLock;
+
+// The Singleton holds shared state behind a process-wide OnceLock.
+struct Singleton;
+
+impl Singleton {
+    fn some_business_logic(&self) {
+        // ...
+    }
+}
+
+// OnceLock provides safe, lazy, one-time initialization.
+fn instance() -> &'static Singleton {
+    static INSTANCE: OnceLock<Singleton> = OnceLock::new();
+    INSTANCE.get_or_init(|| Singleton)
+}
+
+fn main() {
+    let s1 = instance();
+    let s2 = instance();
+
+    if std::ptr::eq(s1, s2) {
+        println!("Singleton works, both variables contain the same instance.");
+    } else {
+        println!("Singleton failed, variables contain different instances.");
+    }
+}
+```
+
 ## Pairs well with
 
 Registry (Singleton-adjacent — usually preferred over a raw Singleton); Facade (Facades are often instantiated as
@@ -3072,6 +12182,21 @@ as if the object changed its class.
 - Only 2-3 states with minor differences → a simple `state: 'a' | 'b' | 'c'` field with switch is clearer
 - States never share a common interface meaningfully → it's not really a state machine
 - A `useState` hook or store flag does the job → no class needed
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a discriminated union + exhaustive `switch` (`never` check); a state-machine library for complex flows |
+| Python | an `Enum` + dict of transition functions, or `match` |
+| Java | an enum with per-constant methods; sealed interface + pattern `switch` |
+| C# | an enum + switch expression; one record per state |
+| Go | state functions: `type stateFn func(*M) stateFn` |
+| C++ | `std::variant` + `std::visit` |
+| Rust | an enum + `match`; typestate (`Door<Open>`) for compile-time states |
 
 ## TypeScript Example
 
@@ -3166,6 +12291,487 @@ context.request1();
 context.request2();
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+
+
+class Context:
+    """
+    The Context defines the interface of interest to clients. It maintains a
+    reference to an instance of a State subclass, representing the current state.
+    """
+
+    _state: State = None
+
+    def __init__(self, state: State) -> None:
+        self.transition_to(state)
+
+    def transition_to(self, state: State) -> None:
+        # The Context allows changing the State object at runtime.
+        print(f"Context: Transition to {type(state).__name__}.")
+        self._state = state
+        self._state.context = self
+
+    def request1(self) -> None:
+        self._state.handle1()
+
+    def request2(self) -> None:
+        self._state.handle2()
+
+
+class State(ABC):
+    """
+    The base State declares methods that all Concrete States should implement
+    and provides a backreference to the Context object.
+    """
+
+    @property
+    def context(self) -> Context:
+        return self._context
+
+    @context.setter
+    def context(self, context: Context) -> None:
+        self._context = context
+
+    @abstractmethod
+    def handle1(self) -> None:
+        ...
+
+    @abstractmethod
+    def handle2(self) -> None:
+        ...
+
+
+class ConcreteStateA(State):
+    def handle1(self) -> None:
+        print("ConcreteStateA handles request1.")
+        print("ConcreteStateA wants to change the state of the context.")
+        self.context.transition_to(ConcreteStateB())
+
+    def handle2(self) -> None:
+        print("ConcreteStateA handles request2.")
+
+
+class ConcreteStateB(State):
+    def handle1(self) -> None:
+        print("ConcreteStateB handles request1.")
+
+    def handle2(self) -> None:
+        print("ConcreteStateB handles request2.")
+        print("ConcreteStateB wants to change the state of the context.")
+        self.context.transition_to(ConcreteStateA())
+
+
+if __name__ == "__main__":
+    context = Context(ConcreteStateA())
+    context.request1()
+    context.request2()
+```
+
+## Java Example
+
+```java
+/**
+ * The Context maintains a reference to an instance of a State subclass, which
+ * represents the current state of the Context.
+ */
+class Context {
+    private State state;
+
+    public Context(State state) {
+        transitionTo(state);
+    }
+
+    // The Context allows changing the State object at runtime.
+    public void transitionTo(State state) {
+        System.out.println("Context: Transition to " + state.getClass().getSimpleName() + ".");
+        this.state = state;
+        this.state.setContext(this);
+    }
+
+    public void request1() {
+        state.handle1();
+    }
+
+    public void request2() {
+        state.handle2();
+    }
+}
+
+/**
+ * The base State declares methods that Concrete States implement and holds a
+ * backreference to the Context.
+ */
+abstract class State {
+    protected Context context;
+
+    public void setContext(Context context) {
+        this.context = context;
+    }
+
+    public abstract void handle1();
+    public abstract void handle2();
+}
+
+class ConcreteStateA extends State {
+    public void handle1() {
+        System.out.println("ConcreteStateA handles request1.");
+        System.out.println("ConcreteStateA wants to change the state of the context.");
+        context.transitionTo(new ConcreteStateB());
+    }
+
+    public void handle2() {
+        System.out.println("ConcreteStateA handles request2.");
+    }
+}
+
+class ConcreteStateB extends State {
+    public void handle1() {
+        System.out.println("ConcreteStateB handles request1.");
+    }
+
+    public void handle2() {
+        System.out.println("ConcreteStateB handles request2.");
+        System.out.println("ConcreteStateB wants to change the state of the context.");
+        context.transitionTo(new ConcreteStateA());
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        Context context = new Context(new ConcreteStateA());
+        context.request1();
+        context.request2();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Context maintains a reference to an instance of a State subclass, which
+// represents the current state of the Context.
+public class Context
+{
+    private State _state;
+
+    public Context(State state)
+    {
+        TransitionTo(state);
+    }
+
+    // The Context allows changing the State object at runtime.
+    public void TransitionTo(State state)
+    {
+        Console.WriteLine($"Context: Transition to {state.GetType().Name}.");
+        _state = state;
+        _state.SetContext(this);
+    }
+
+    public void Request1() => _state.Handle1();
+
+    public void Request2() => _state.Handle2();
+}
+
+// The base State declares methods that Concrete States implement and holds a
+// backreference to the Context.
+public abstract class State
+{
+    protected Context _context;
+
+    public void SetContext(Context context) => _context = context;
+
+    public abstract void Handle1();
+    public abstract void Handle2();
+}
+
+public class ConcreteStateA : State
+{
+    public override void Handle1()
+    {
+        Console.WriteLine("ConcreteStateA handles request1.");
+        Console.WriteLine("ConcreteStateA wants to change the state of the context.");
+        _context.TransitionTo(new ConcreteStateB());
+    }
+
+    public override void Handle2()
+    {
+        Console.WriteLine("ConcreteStateA handles request2.");
+    }
+}
+
+public class ConcreteStateB : State
+{
+    public override void Handle1()
+    {
+        Console.WriteLine("ConcreteStateB handles request1.");
+    }
+
+    public override void Handle2()
+    {
+        Console.WriteLine("ConcreteStateB handles request2.");
+        Console.WriteLine("ConcreteStateB wants to change the state of the context.");
+        _context.TransitionTo(new ConcreteStateA());
+    }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        var context = new Context(new ConcreteStateA());
+        context.Request1();
+        context.Request2();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"reflect"
+)
+
+// State declares methods that Concrete States implement and holds a
+// backreference to the Context.
+type State interface {
+	SetContext(context *Context)
+	Handle1()
+	Handle2()
+}
+
+// Context maintains a reference to the current State.
+type Context struct {
+	state State
+}
+
+func NewContext(state State) *Context {
+	c := &Context{}
+	c.TransitionTo(state)
+	return c
+}
+
+// TransitionTo allows changing the State object at runtime.
+func (c *Context) TransitionTo(state State) {
+	fmt.Printf("Context: Transition to %s.\n", reflect.TypeOf(state).Elem().Name())
+	c.state = state
+	c.state.SetContext(c)
+}
+
+func (c *Context) Request1() { c.state.Handle1() }
+func (c *Context) Request2() { c.state.Handle2() }
+
+type BaseState struct {
+	context *Context
+}
+
+func (s *BaseState) SetContext(context *Context) { s.context = context }
+
+type ConcreteStateA struct {
+	BaseState
+}
+
+func (s *ConcreteStateA) Handle1() {
+	fmt.Println("ConcreteStateA handles request1.")
+	fmt.Println("ConcreteStateA wants to change the state of the context.")
+	s.context.TransitionTo(&ConcreteStateB{})
+}
+
+func (s *ConcreteStateA) Handle2() {
+	fmt.Println("ConcreteStateA handles request2.")
+}
+
+type ConcreteStateB struct {
+	BaseState
+}
+
+func (s *ConcreteStateB) Handle1() {
+	fmt.Println("ConcreteStateB handles request1.")
+}
+
+func (s *ConcreteStateB) Handle2() {
+	fmt.Println("ConcreteStateB handles request2.")
+	fmt.Println("ConcreteStateB wants to change the state of the context.")
+	s.context.TransitionTo(&ConcreteStateA{})
+}
+
+func main() {
+	context := NewContext(&ConcreteStateA{})
+	context.Request1()
+	context.Request2()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+#include <typeinfo>
+
+class Context;
+
+// The base State declares methods that Concrete States implement and holds a
+// backreference to the Context.
+class State {
+protected:
+    Context* context_ = nullptr;
+
+public:
+    virtual ~State() = default;
+    void setContext(Context* context) { context_ = context; }
+    virtual void handle1() = 0;
+    virtual void handle2() = 0;
+};
+
+// The Context maintains a reference to the current State.
+class Context {
+    std::unique_ptr<State> state_;
+
+public:
+    explicit Context(std::unique_ptr<State> state) {
+        transitionTo(std::move(state));
+    }
+
+    // Allows changing the State object at runtime.
+    void transitionTo(std::unique_ptr<State> state) {
+        std::cout << "Context: Transition to " << typeid(*state).name() << ".\n";
+        state_ = std::move(state);
+        state_->setContext(this);
+    }
+
+    void request1() { state_->handle1(); }
+    void request2() { state_->handle2(); }
+};
+
+class ConcreteStateB;
+
+class ConcreteStateA : public State {
+public:
+    void handle1() override;
+    void handle2() override {
+        std::cout << "ConcreteStateA handles request2.\n";
+    }
+};
+
+class ConcreteStateB : public State {
+public:
+    void handle1() override {
+        std::cout << "ConcreteStateB handles request1.\n";
+    }
+    void handle2() override {
+        std::cout << "ConcreteStateB handles request2.\n";
+        std::cout << "ConcreteStateB wants to change the state of the context.\n";
+        context_->transitionTo(std::make_unique<ConcreteStateA>());
+    }
+};
+
+void ConcreteStateA::handle1() {
+    std::cout << "ConcreteStateA handles request1.\n";
+    std::cout << "ConcreteStateA wants to change the state of the context.\n";
+    context_->transitionTo(std::make_unique<ConcreteStateB>());
+}
+
+int main() {
+    Context context(std::make_unique<ConcreteStateA>());
+    context.request1();
+    context.request2();
+}
+```
+
+## Rust Example
+
+```rust
+// Each state is a struct implementing the State trait. handle methods return an
+// optional next state so the Context can perform the transition.
+trait State {
+    fn handle1(self: Box<Self>) -> Box<dyn State>;
+    fn handle2(self: Box<Self>) -> Box<dyn State>;
+    fn name(&self) -> &'static str;
+}
+
+// The Context owns the current State and delegates behavior to it.
+struct Context {
+    state: Option<Box<dyn State>>,
+}
+
+impl Context {
+    fn new(state: Box<dyn State>) -> Self {
+        println!("Context: Transition to {}.", state.name());
+        Context { state: Some(state) }
+    }
+
+    fn transition_to(&mut self, state: Box<dyn State>) {
+        println!("Context: Transition to {}.", state.name());
+        self.state = Some(state);
+    }
+
+    fn request1(&mut self) {
+        if let Some(state) = self.state.take() {
+            let next = state.handle1();
+            self.transition_to(next);
+        }
+    }
+
+    fn request2(&mut self) {
+        if let Some(state) = self.state.take() {
+            let next = state.handle2();
+            self.transition_to(next);
+        }
+    }
+}
+
+struct ConcreteStateA;
+
+impl State for ConcreteStateA {
+    fn handle1(self: Box<Self>) -> Box<dyn State> {
+        println!("ConcreteStateA handles request1.");
+        println!("ConcreteStateA wants to change the state of the context.");
+        Box::new(ConcreteStateB)
+    }
+    fn handle2(self: Box<Self>) -> Box<dyn State> {
+        println!("ConcreteStateA handles request2.");
+        self
+    }
+    fn name(&self) -> &'static str {
+        "ConcreteStateA"
+    }
+}
+
+struct ConcreteStateB;
+
+impl State for ConcreteStateB {
+    fn handle1(self: Box<Self>) -> Box<dyn State> {
+        println!("ConcreteStateB handles request1.");
+        self
+    }
+    fn handle2(self: Box<Self>) -> Box<dyn State> {
+        println!("ConcreteStateB handles request2.");
+        println!("ConcreteStateB wants to change the state of the context.");
+        Box::new(ConcreteStateA)
+    }
+    fn name(&self) -> &'static str {
+        "ConcreteStateB"
+    }
+}
+
+fn main() {
+    let mut context = Context::new(Box::new(ConcreteStateA));
+    context.request1();
+    context.request2();
+}
+```
+
 ## Pairs well with
 
 Strategy (Strategy is "do this thing different ways"; State is "I am in different modes"); Memento (snapshot state for
@@ -3209,6 +12815,21 @@ class, and make their objects interchangeable.
 - You only have one algorithm and no plan for a second → just write the function
 - The "strategies" are 1-line functions → pass a function instead of building a class hierarchy
 - A simple `switch` over 2-3 cases is clearer than 3 strategy classes
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | pass a function, or a `Record<Key, Fn>` dispatch map |
+| Python | pass a callable, or a dict of functions |
+| Java | a lambda / functional interface (`Comparator`) |
+| C# | a `Func<>` delegate |
+| Go | a func-typed parameter |
+| C++ | `std::function`, or a template parameter (static strategy) |
+| Rust | a closure `impl Fn(..)`, or a generic `S: Strategy` |
 
 ## TypeScript Example
 
@@ -3292,6 +12913,420 @@ context.setStrategy(new ConcreteStrategyB());
 context.doSomeBusinessLogic();
 ```
 
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+from typing import List
+
+
+class Context:
+    """
+    The Context defines the interface of interest to clients.
+    """
+
+    def __init__(self, strategy: Strategy) -> None:
+        # The Context accepts a strategy through the constructor, but also
+        # provides a setter to change it at runtime.
+        self._strategy = strategy
+
+    @property
+    def strategy(self) -> Strategy:
+        return self._strategy
+
+    @strategy.setter
+    def strategy(self, strategy: Strategy) -> None:
+        # The Context allows replacing a Strategy object at runtime.
+        self._strategy = strategy
+
+    def do_some_business_logic(self) -> None:
+        # The Context delegates work to the Strategy object instead of
+        # implementing multiple versions of the algorithm on its own.
+        print("Context: Sorting data using the strategy (not sure how it'll do it)")
+        result = self._strategy.do_algorithm(["a", "b", "c", "d", "e"])
+        print(",".join(result))
+
+
+class Strategy(ABC):
+    """
+    The Strategy interface declares operations common to all supported versions
+    of some algorithm.
+    """
+
+    @abstractmethod
+    def do_algorithm(self, data: List[str]) -> List[str]:
+        ...
+
+
+class ConcreteStrategyA(Strategy):
+    def do_algorithm(self, data: List[str]) -> List[str]:
+        return sorted(data)
+
+
+class ConcreteStrategyB(Strategy):
+    def do_algorithm(self, data: List[str]) -> List[str]:
+        return list(reversed(data))
+
+
+if __name__ == "__main__":
+    # The client code picks a concrete strategy and passes it to the context.
+    context = Context(ConcreteStrategyA())
+    print("Client: Strategy is set to normal sorting.")
+    context.do_some_business_logic()
+
+    print()
+
+    print("Client: Strategy is set to reverse sorting.")
+    context.strategy = ConcreteStrategyB()
+    context.do_some_business_logic()
+```
+
+## Java Example
+
+```java
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * The Strategy interface declares operations common to all supported versions
+ * of some algorithm.
+ */
+interface Strategy {
+    List<String> doAlgorithm(List<String> data);
+}
+
+/**
+ * The Context maintains a reference to one of the Strategy objects and works
+ * with it only via the Strategy interface.
+ */
+class Context {
+    private Strategy strategy;
+
+    public Context(Strategy strategy) {
+        this.strategy = strategy;
+    }
+
+    // The Context allows replacing a Strategy object at runtime.
+    public void setStrategy(Strategy strategy) {
+        this.strategy = strategy;
+    }
+
+    public void doSomeBusinessLogic() {
+        System.out.println("Context: Sorting data using the strategy (not sure how it'll do it)");
+        List<String> result = strategy.doAlgorithm(Arrays.asList("a", "b", "c", "d", "e"));
+        System.out.println(String.join(",", result));
+    }
+}
+
+class ConcreteStrategyA implements Strategy {
+    public List<String> doAlgorithm(List<String> data) {
+        List<String> result = new java.util.ArrayList<>(data);
+        Collections.sort(result);
+        return result;
+    }
+}
+
+class ConcreteStrategyB implements Strategy {
+    public List<String> doAlgorithm(List<String> data) {
+        List<String> result = new java.util.ArrayList<>(data);
+        Collections.reverse(result);
+        return result;
+    }
+}
+
+public class Demo {
+    public static void main(String[] args) {
+        // The client picks a concrete strategy and passes it to the context.
+        Context context = new Context(new ConcreteStrategyA());
+        System.out.println("Client: Strategy is set to normal sorting.");
+        context.doSomeBusinessLogic();
+
+        System.out.println();
+
+        System.out.println("Client: Strategy is set to reverse sorting.");
+        context.setStrategy(new ConcreteStrategyB());
+        context.doSomeBusinessLogic();
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// The Strategy interface declares operations common to all supported versions
+// of some algorithm.
+public interface IStrategy
+{
+    List<string> DoAlgorithm(List<string> data);
+}
+
+// The Context maintains a reference to a Strategy object and works with it
+// only via the Strategy interface.
+public class Context
+{
+    private IStrategy _strategy;
+
+    public Context(IStrategy strategy)
+    {
+        _strategy = strategy;
+    }
+
+    // The Context allows replacing a Strategy object at runtime.
+    public void SetStrategy(IStrategy strategy)
+    {
+        _strategy = strategy;
+    }
+
+    public void DoSomeBusinessLogic()
+    {
+        Console.WriteLine("Context: Sorting data using the strategy (not sure how it'll do it)");
+        var result = _strategy.DoAlgorithm(new List<string> { "a", "b", "c", "d", "e" });
+        Console.WriteLine(string.Join(",", result));
+    }
+}
+
+public class ConcreteStrategyA : IStrategy
+{
+    public List<string> DoAlgorithm(List<string> data)
+    {
+        var result = new List<string>(data);
+        result.Sort();
+        return result;
+    }
+}
+
+public class ConcreteStrategyB : IStrategy
+{
+    public List<string> DoAlgorithm(List<string> data)
+    {
+        return data.AsEnumerable().Reverse().ToList();
+    }
+}
+
+public class Program
+{
+    public static void Main()
+    {
+        // The client picks a concrete strategy and passes it to the context.
+        var context = new Context(new ConcreteStrategyA());
+        Console.WriteLine("Client: Strategy is set to normal sorting.");
+        context.DoSomeBusinessLogic();
+
+        Console.WriteLine();
+
+        Console.WriteLine("Client: Strategy is set to reverse sorting.");
+        context.SetStrategy(new ConcreteStrategyB());
+        context.DoSomeBusinessLogic();
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// Strategy declares operations common to all supported versions of some
+// algorithm.
+type Strategy interface {
+	DoAlgorithm(data []string) []string
+}
+
+// Context maintains a reference to a Strategy and works with it only via the
+// Strategy interface.
+type Context struct {
+	strategy Strategy
+}
+
+// SetStrategy allows replacing a Strategy at runtime.
+func (c *Context) SetStrategy(strategy Strategy) {
+	c.strategy = strategy
+}
+
+func (c *Context) DoSomeBusinessLogic() {
+	fmt.Println("Context: Sorting data using the strategy (not sure how it'll do it)")
+	result := c.strategy.DoAlgorithm([]string{"a", "b", "c", "d", "e"})
+	fmt.Println(strings.Join(result, ","))
+}
+
+type ConcreteStrategyA struct{}
+
+func (ConcreteStrategyA) DoAlgorithm(data []string) []string {
+	result := append([]string(nil), data...)
+	sort.Strings(result)
+	return result
+}
+
+type ConcreteStrategyB struct{}
+
+func (ConcreteStrategyB) DoAlgorithm(data []string) []string {
+	result := append([]string(nil), data...)
+	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
+		result[i], result[j] = result[j], result[i]
+	}
+	return result
+}
+
+func main() {
+	// The client picks a concrete strategy and passes it to the context.
+	context := &Context{strategy: ConcreteStrategyA{}}
+	fmt.Println("Client: Strategy is set to normal sorting.")
+	context.DoSomeBusinessLogic()
+
+	fmt.Println()
+
+	fmt.Println("Client: Strategy is set to reverse sorting.")
+	context.SetStrategy(ConcreteStrategyB{})
+	context.DoSomeBusinessLogic()
+}
+```
+
+## C++ Example
+
+```cpp
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+// The Strategy interface declares operations common to all supported versions
+// of some algorithm.
+class Strategy {
+public:
+    virtual ~Strategy() = default;
+    virtual std::vector<std::string> doAlgorithm(std::vector<std::string> data) const = 0;
+};
+
+// The Context works with a Strategy only via the Strategy interface.
+class Context {
+    std::unique_ptr<Strategy> strategy_;
+
+public:
+    explicit Context(std::unique_ptr<Strategy> strategy)
+        : strategy_(std::move(strategy)) {}
+
+    // Allows replacing a Strategy object at runtime.
+    void setStrategy(std::unique_ptr<Strategy> strategy) {
+        strategy_ = std::move(strategy);
+    }
+
+    void doSomeBusinessLogic() const {
+        std::cout << "Context: Sorting data using the strategy (not sure how it'll do it)\n";
+        auto result = strategy_->doAlgorithm({"a", "b", "c", "d", "e"});
+        for (std::size_t i = 0; i < result.size(); ++i) {
+            std::cout << (i ? "," : "") << result[i];
+        }
+        std::cout << "\n";
+    }
+};
+
+class ConcreteStrategyA : public Strategy {
+public:
+    std::vector<std::string> doAlgorithm(std::vector<std::string> data) const override {
+        std::sort(data.begin(), data.end());
+        return data;
+    }
+};
+
+class ConcreteStrategyB : public Strategy {
+public:
+    std::vector<std::string> doAlgorithm(std::vector<std::string> data) const override {
+        std::reverse(data.begin(), data.end());
+        return data;
+    }
+};
+
+int main() {
+    // The client picks a concrete strategy and passes it to the context.
+    Context context(std::make_unique<ConcreteStrategyA>());
+    std::cout << "Client: Strategy is set to normal sorting.\n";
+    context.doSomeBusinessLogic();
+
+    std::cout << "\n";
+
+    std::cout << "Client: Strategy is set to reverse sorting.\n";
+    context.setStrategy(std::make_unique<ConcreteStrategyB>());
+    context.doSomeBusinessLogic();
+}
+```
+
+## Rust Example
+
+```rust
+// The Strategy trait declares operations common to all supported versions of
+// some algorithm.
+trait Strategy {
+    fn do_algorithm(&self, data: Vec<String>) -> Vec<String>;
+}
+
+// The Context works with a Strategy only via the Strategy trait.
+struct Context {
+    strategy: Box<dyn Strategy>,
+}
+
+impl Context {
+    fn new(strategy: Box<dyn Strategy>) -> Self {
+        Context { strategy }
+    }
+
+    // Allows replacing a Strategy object at runtime.
+    fn set_strategy(&mut self, strategy: Box<dyn Strategy>) {
+        self.strategy = strategy;
+    }
+
+    fn do_some_business_logic(&self) {
+        println!("Context: Sorting data using the strategy (not sure how it'll do it)");
+        let data = ["a", "b", "c", "d", "e"].iter().map(|s| s.to_string()).collect();
+        let result = self.strategy.do_algorithm(data);
+        println!("{}", result.join(","));
+    }
+}
+
+struct ConcreteStrategyA;
+
+impl Strategy for ConcreteStrategyA {
+    fn do_algorithm(&self, mut data: Vec<String>) -> Vec<String> {
+        data.sort();
+        data
+    }
+}
+
+struct ConcreteStrategyB;
+
+impl Strategy for ConcreteStrategyB {
+    fn do_algorithm(&self, mut data: Vec<String>) -> Vec<String> {
+        data.reverse();
+        data
+    }
+}
+
+fn main() {
+    // The client picks a concrete strategy and passes it to the context.
+    let mut context = Context::new(Box::new(ConcreteStrategyA));
+    println!("Client: Strategy is set to normal sorting.");
+    context.do_some_business_logic();
+
+    println!();
+
+    println!("Client: Strategy is set to reverse sorting.");
+    context.set_strategy(Box::new(ConcreteStrategyB));
+    context.do_some_business_logic();
+}
+```
+
 ## Pairs well with
 
 Factory Method (factory picks the concrete strategy); State (State picks Strategy based on internal mode); Adapter (
@@ -3332,6 +13367,21 @@ subclasses override specific steps of the algorithm without changing its structu
 - Steps are completely independent → use Strategy instead
 - You only have one concrete subclass → just write the algorithm directly
 - The "algorithm skeleton" is 3 lines → inheritance is overkill, use a function with callback parameters
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a higher-order function that takes the variable steps as callbacks |
+| Python | a function taking hook callables; an ABC only for framework-style extension |
+| Java | an abstract class is fine; or pass lambdas for the steps |
+| C# | pass delegates for the steps; an abstract class is fine |
+| Go | no inheritance — a function taking an interface of steps |
+| C++ | the NVI idiom, or CRTP |
+| Rust | a trait with default methods that call the required methods — this is the pattern, natively |
 
 ## TypeScript Example
 
@@ -3435,6 +13485,460 @@ console.log('Same client code can work with different subclasses:');
 clientCode(new ConcreteClass2());
 ```
 
+## Python Example
+
+```python
+from abc import ABC, abstractmethod
+
+
+class AbstractClass(ABC):
+    """Defines a template method with the skeleton of an algorithm."""
+
+    def template_method(self) -> None:
+        self.base_operation1()
+        self.required_operations1()
+        self.base_operation2()
+        self.hook1()
+        self.required_operation2()
+        self.base_operation3()
+        self.hook2()
+
+    def base_operation1(self) -> None:
+        print("AbstractClass says: I am doing the bulk of the work")
+
+    def base_operation2(self) -> None:
+        print("AbstractClass says: But I let subclasses override some operations")
+
+    def base_operation3(self) -> None:
+        print("AbstractClass says: But I am doing the bulk of the work anyway")
+
+    @abstractmethod
+    def required_operations1(self) -> None:
+        pass
+
+    @abstractmethod
+    def required_operation2(self) -> None:
+        pass
+
+    # Hooks have empty default implementations; subclasses may override them.
+    def hook1(self) -> None:
+        pass
+
+    def hook2(self) -> None:
+        pass
+
+
+class ConcreteClass1(AbstractClass):
+    def required_operations1(self) -> None:
+        print("ConcreteClass1 says: Implemented Operation1")
+
+    def required_operation2(self) -> None:
+        print("ConcreteClass1 says: Implemented Operation2")
+
+
+class ConcreteClass2(AbstractClass):
+    def required_operations1(self) -> None:
+        print("ConcreteClass2 says: Implemented Operation1")
+
+    def required_operation2(self) -> None:
+        print("ConcreteClass2 says: Implemented Operation2")
+
+    def hook1(self) -> None:
+        print("ConcreteClass2 says: Overridden Hook1")
+
+
+def client_code(abstract_class: AbstractClass) -> None:
+    abstract_class.template_method()
+
+
+if __name__ == "__main__":
+    print("Same client code can work with different subclasses:")
+    client_code(ConcreteClass1())
+    print("")
+    print("Same client code can work with different subclasses:")
+    client_code(ConcreteClass2())
+```
+
+## Java Example
+
+```java
+// The Abstract Class defines a template method and its primitive operations.
+abstract class AbstractClass {
+    // The template method defines the skeleton of an algorithm.
+    public final void templateMethod() {
+        baseOperation1();
+        requiredOperations1();
+        baseOperation2();
+        hook1();
+        requiredOperation2();
+        baseOperation3();
+        hook2();
+    }
+
+    protected void baseOperation1() {
+        System.out.println("AbstractClass says: I am doing the bulk of the work");
+    }
+
+    protected void baseOperation2() {
+        System.out.println("AbstractClass says: But I let subclasses override some operations");
+    }
+
+    protected void baseOperation3() {
+        System.out.println("AbstractClass says: But I am doing the bulk of the work anyway");
+    }
+
+    protected abstract void requiredOperations1();
+
+    protected abstract void requiredOperation2();
+
+    // Hooks: default (empty) implementations subclasses may override.
+    protected void hook1() { }
+
+    protected void hook2() { }
+}
+
+class ConcreteClass1 extends AbstractClass {
+    protected void requiredOperations1() {
+        System.out.println("ConcreteClass1 says: Implemented Operation1");
+    }
+
+    protected void requiredOperation2() {
+        System.out.println("ConcreteClass1 says: Implemented Operation2");
+    }
+}
+
+class ConcreteClass2 extends AbstractClass {
+    protected void requiredOperations1() {
+        System.out.println("ConcreteClass2 says: Implemented Operation1");
+    }
+
+    protected void requiredOperation2() {
+        System.out.println("ConcreteClass2 says: Implemented Operation2");
+    }
+
+    protected void hook1() {
+        System.out.println("ConcreteClass2 says: Overridden Hook1");
+    }
+}
+
+public class Demo {
+    static void clientCode(AbstractClass abstractClass) {
+        abstractClass.templateMethod();
+    }
+
+    public static void main(String[] args) {
+        System.out.println("Same client code can work with different subclasses:");
+        clientCode(new ConcreteClass1());
+        System.out.println("");
+        System.out.println("Same client code can work with different subclasses:");
+        clientCode(new ConcreteClass2());
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+
+// The Abstract Class defines a template method and its primitive operations.
+abstract class AbstractClass
+{
+    // The template method defines the skeleton of an algorithm.
+    public void TemplateMethod()
+    {
+        BaseOperation1();
+        RequiredOperations1();
+        BaseOperation2();
+        Hook1();
+        RequiredOperation2();
+        BaseOperation3();
+        Hook2();
+    }
+
+    protected void BaseOperation1() =>
+        Console.WriteLine("AbstractClass says: I am doing the bulk of the work");
+
+    protected void BaseOperation2() =>
+        Console.WriteLine("AbstractClass says: But I let subclasses override some operations");
+
+    protected void BaseOperation3() =>
+        Console.WriteLine("AbstractClass says: But I am doing the bulk of the work anyway");
+
+    protected abstract void RequiredOperations1();
+
+    protected abstract void RequiredOperation2();
+
+    // Hooks: virtual with empty defaults subclasses may override.
+    protected virtual void Hook1() { }
+
+    protected virtual void Hook2() { }
+}
+
+class ConcreteClass1 : AbstractClass
+{
+    protected override void RequiredOperations1() =>
+        Console.WriteLine("ConcreteClass1 says: Implemented Operation1");
+
+    protected override void RequiredOperation2() =>
+        Console.WriteLine("ConcreteClass1 says: Implemented Operation2");
+}
+
+class ConcreteClass2 : AbstractClass
+{
+    protected override void RequiredOperations1() =>
+        Console.WriteLine("ConcreteClass2 says: Implemented Operation1");
+
+    protected override void RequiredOperation2() =>
+        Console.WriteLine("ConcreteClass2 says: Implemented Operation2");
+
+    protected override void Hook1() =>
+        Console.WriteLine("ConcreteClass2 says: Overridden Hook1");
+}
+
+class Program
+{
+    static void ClientCode(AbstractClass abstractClass) => abstractClass.TemplateMethod();
+
+    static void Main()
+    {
+        Console.WriteLine("Same client code can work with different subclasses:");
+        ClientCode(new ConcreteClass1());
+        Console.WriteLine("");
+        Console.WriteLine("Same client code can work with different subclasses:");
+        ClientCode(new ConcreteClass2());
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+// Go has no inheritance, so the varying steps are expressed as an interface and
+// the template method is a plain function that calls those steps in order.
+type Operations interface {
+	BaseOperation1()
+	RequiredOperations1()
+	BaseOperation2()
+	Hook1()
+	RequiredOperation2()
+	BaseOperation3()
+	Hook2()
+}
+
+// templateMethod defines the skeleton of the algorithm.
+func templateMethod(o Operations) {
+	o.BaseOperation1()
+	o.RequiredOperations1()
+	o.BaseOperation2()
+	o.Hook1()
+	o.RequiredOperation2()
+	o.BaseOperation3()
+	o.Hook2()
+}
+
+// Base holds the shared step implementations, embedded by concrete structs.
+type Base struct{}
+
+func (Base) BaseOperation1() {
+	fmt.Println("AbstractClass says: I am doing the bulk of the work")
+}
+func (Base) BaseOperation2() {
+	fmt.Println("AbstractClass says: But I let subclasses override some operations")
+}
+func (Base) BaseOperation3() {
+	fmt.Println("AbstractClass says: But I am doing the bulk of the work anyway")
+}
+func (Base) Hook1() {} // empty default hooks
+func (Base) Hook2() {}
+
+type ConcreteClass1 struct{ Base }
+
+func (ConcreteClass1) RequiredOperations1() {
+	fmt.Println("ConcreteClass1 says: Implemented Operation1")
+}
+func (ConcreteClass1) RequiredOperation2() {
+	fmt.Println("ConcreteClass1 says: Implemented Operation2")
+}
+
+type ConcreteClass2 struct{ Base }
+
+func (ConcreteClass2) RequiredOperations1() {
+	fmt.Println("ConcreteClass2 says: Implemented Operation1")
+}
+func (ConcreteClass2) RequiredOperation2() {
+	fmt.Println("ConcreteClass2 says: Implemented Operation2")
+}
+func (ConcreteClass2) Hook1() {
+	fmt.Println("ConcreteClass2 says: Overridden Hook1")
+}
+
+func clientCode(o Operations) { templateMethod(o) }
+
+func main() {
+	fmt.Println("Same client code can work with different subclasses:")
+	clientCode(ConcreteClass1{})
+	fmt.Println("")
+	fmt.Println("Same client code can work with different subclasses:")
+	clientCode(ConcreteClass2{})
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+
+// The Abstract Class defines a template method and its primitive operations.
+class AbstractClass {
+public:
+    virtual ~AbstractClass() = default;
+
+    // The template method defines the skeleton of an algorithm.
+    void TemplateMethod() const {
+        BaseOperation1();
+        RequiredOperations1();
+        BaseOperation2();
+        Hook1();
+        RequiredOperation2();
+        BaseOperation3();
+        Hook2();
+    }
+
+protected:
+    void BaseOperation1() const {
+        std::cout << "AbstractClass says: I am doing the bulk of the work\n";
+    }
+    void BaseOperation2() const {
+        std::cout << "AbstractClass says: But I let subclasses override some operations\n";
+    }
+    void BaseOperation3() const {
+        std::cout << "AbstractClass says: But I am doing the bulk of the work anyway\n";
+    }
+
+    virtual void RequiredOperations1() const = 0;
+    virtual void RequiredOperation2() const = 0;
+
+    // Hooks: empty default implementations subclasses may override.
+    virtual void Hook1() const {}
+    virtual void Hook2() const {}
+};
+
+class ConcreteClass1 : public AbstractClass {
+protected:
+    void RequiredOperations1() const override {
+        std::cout << "ConcreteClass1 says: Implemented Operation1\n";
+    }
+    void RequiredOperation2() const override {
+        std::cout << "ConcreteClass1 says: Implemented Operation2\n";
+    }
+};
+
+class ConcreteClass2 : public AbstractClass {
+protected:
+    void RequiredOperations1() const override {
+        std::cout << "ConcreteClass2 says: Implemented Operation1\n";
+    }
+    void RequiredOperation2() const override {
+        std::cout << "ConcreteClass2 says: Implemented Operation2\n";
+    }
+    void Hook1() const override {
+        std::cout << "ConcreteClass2 says: Overridden Hook1\n";
+    }
+};
+
+void ClientCode(const AbstractClass& abstractClass) {
+    abstractClass.TemplateMethod();
+}
+
+int main() {
+    std::cout << "Same client code can work with different subclasses:\n";
+    ClientCode(*std::make_unique<ConcreteClass1>());
+    std::cout << "\n";
+    std::cout << "Same client code can work with different subclasses:\n";
+    ClientCode(*std::make_unique<ConcreteClass2>());
+    return 0;
+}
+```
+
+## Rust Example
+
+```rust
+// The trait defines the template method plus its primitive operations. Default
+// methods supply the shared steps and the empty hooks.
+trait AbstractClass {
+    // The template method defines the skeleton of an algorithm.
+    fn template_method(&self) {
+        self.base_operation1();
+        self.required_operations1();
+        self.base_operation2();
+        self.hook1();
+        self.required_operation2();
+        self.base_operation3();
+        self.hook2();
+    }
+
+    fn base_operation1(&self) {
+        println!("AbstractClass says: I am doing the bulk of the work");
+    }
+    fn base_operation2(&self) {
+        println!("AbstractClass says: But I let subclasses override some operations");
+    }
+    fn base_operation3(&self) {
+        println!("AbstractClass says: But I am doing the bulk of the work anyway");
+    }
+
+    fn required_operations1(&self);
+    fn required_operation2(&self);
+
+    // Hooks: default (empty) implementations implementors may override.
+    fn hook1(&self) {}
+    fn hook2(&self) {}
+}
+
+struct ConcreteClass1;
+
+impl AbstractClass for ConcreteClass1 {
+    fn required_operations1(&self) {
+        println!("ConcreteClass1 says: Implemented Operation1");
+    }
+    fn required_operation2(&self) {
+        println!("ConcreteClass1 says: Implemented Operation2");
+    }
+}
+
+struct ConcreteClass2;
+
+impl AbstractClass for ConcreteClass2 {
+    fn required_operations1(&self) {
+        println!("ConcreteClass2 says: Implemented Operation1");
+    }
+    fn required_operation2(&self) {
+        println!("ConcreteClass2 says: Implemented Operation2");
+    }
+    fn hook1(&self) {
+        println!("ConcreteClass2 says: Overridden Hook1");
+    }
+}
+
+fn client_code(abstract_class: &dyn AbstractClass) {
+    abstract_class.template_method();
+}
+
+fn main() {
+    println!("Same client code can work with different subclasses:");
+    client_code(&ConcreteClass1);
+    println!();
+    println!("Same client code can work with different subclasses:");
+    client_code(&ConcreteClass2);
+}
+```
+
 ## Pairs well with
 
 Factory Method (Factory Method is itself a specialization of Template Method); Strategy (Strategy lets you change the
@@ -3475,6 +13979,21 @@ enables adding new behaviors to object structures without modifying the classes 
 - You'd be adding a Visitor for a single operation → just add the method to the class
 - Element classes change frequently → Visitor maintenance becomes painful
 - A discriminated union with `switch` over `kind` field is clearer
+
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a discriminated union + exhaustive `switch` in plain functions |
+| Python | `functools.singledispatch`, or `match` with class patterns |
+| Java | sealed interface + pattern-matching `switch` (Java 21) — replaces Visitor |
+| C# | a switch expression with type patterns |
+| Go | a type switch `switch v := n.(type)` |
+| C++ | `std::variant` + `std::visit` |
+| Rust | an enum + `match` — the idiomatic visitor |
 
 ## TypeScript Example
 
@@ -3583,6 +14102,438 @@ console.log('');
 console.log('It allows the same client code to work with different types of visitors:');
 const visitor2 = new ConcreteVisitor2();
 clientCode(components, visitor2);
+```
+
+## Python Example
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+
+
+class Component(ABC):
+    @abstractmethod
+    def accept(self, visitor: Visitor) -> None: ...
+
+
+class ConcreteComponentA(Component):
+    def accept(self, visitor: Visitor) -> None:
+        visitor.visit_concrete_component_a(self)
+
+    def exclusive_method_of_concrete_component_a(self) -> str:
+        return "A"
+
+
+class ConcreteComponentB(Component):
+    def accept(self, visitor: Visitor) -> None:
+        visitor.visit_concrete_component_b(self)
+
+    def special_method_of_concrete_component_b(self) -> str:
+        return "B"
+
+
+class Visitor(ABC):
+    @abstractmethod
+    def visit_concrete_component_a(self, element: ConcreteComponentA) -> None: ...
+
+    @abstractmethod
+    def visit_concrete_component_b(self, element: ConcreteComponentB) -> None: ...
+
+
+class ConcreteVisitor1(Visitor):
+    def visit_concrete_component_a(self, element: ConcreteComponentA) -> None:
+        print(f"{element.exclusive_method_of_concrete_component_a()} + ConcreteVisitor1")
+
+    def visit_concrete_component_b(self, element: ConcreteComponentB) -> None:
+        print(f"{element.special_method_of_concrete_component_b()} + ConcreteVisitor1")
+
+
+class ConcreteVisitor2(Visitor):
+    def visit_concrete_component_a(self, element: ConcreteComponentA) -> None:
+        print(f"{element.exclusive_method_of_concrete_component_a()} + ConcreteVisitor2")
+
+    def visit_concrete_component_b(self, element: ConcreteComponentB) -> None:
+        print(f"{element.special_method_of_concrete_component_b()} + ConcreteVisitor2")
+
+
+def client_code(components: list[Component], visitor: Visitor) -> None:
+    for component in components:
+        component.accept(visitor)
+
+
+if __name__ == "__main__":
+    components = [ConcreteComponentA(), ConcreteComponentB()]
+
+    print("The client code works with all visitors via the base Visitor interface:")
+    client_code(components, ConcreteVisitor1())
+    print()
+
+    print("It allows the same client code to work with different types of visitors:")
+    client_code(components, ConcreteVisitor2())
+```
+
+## Java Example
+
+```java
+import java.util.List;
+
+interface Component {
+    void accept(Visitor visitor);
+}
+
+class ConcreteComponentA implements Component {
+    public void accept(Visitor visitor) {
+        visitor.visitConcreteComponentA(this);
+    }
+
+    public String exclusiveMethodOfConcreteComponentA() {
+        return "A";
+    }
+}
+
+class ConcreteComponentB implements Component {
+    public void accept(Visitor visitor) {
+        visitor.visitConcreteComponentB(this);
+    }
+
+    public String specialMethodOfConcreteComponentB() {
+        return "B";
+    }
+}
+
+interface Visitor {
+    void visitConcreteComponentA(ConcreteComponentA element);
+    void visitConcreteComponentB(ConcreteComponentB element);
+}
+
+class ConcreteVisitor1 implements Visitor {
+    public void visitConcreteComponentA(ConcreteComponentA element) {
+        System.out.println(element.exclusiveMethodOfConcreteComponentA() + " + ConcreteVisitor1");
+    }
+
+    public void visitConcreteComponentB(ConcreteComponentB element) {
+        System.out.println(element.specialMethodOfConcreteComponentB() + " + ConcreteVisitor1");
+    }
+}
+
+class ConcreteVisitor2 implements Visitor {
+    public void visitConcreteComponentA(ConcreteComponentA element) {
+        System.out.println(element.exclusiveMethodOfConcreteComponentA() + " + ConcreteVisitor2");
+    }
+
+    public void visitConcreteComponentB(ConcreteComponentB element) {
+        System.out.println(element.specialMethodOfConcreteComponentB() + " + ConcreteVisitor2");
+    }
+}
+
+public class Demo {
+    static void clientCode(List<Component> components, Visitor visitor) {
+        for (Component component : components) {
+            component.accept(visitor);
+        }
+    }
+
+    public static void main(String[] args) {
+        List<Component> components = List.of(new ConcreteComponentA(), new ConcreteComponentB());
+
+        System.out.println("The client code works with all visitors via the base Visitor interface:");
+        clientCode(components, new ConcreteVisitor1());
+        System.out.println();
+
+        System.out.println("It allows the same client code to work with different types of visitors:");
+        clientCode(components, new ConcreteVisitor2());
+    }
+}
+```
+
+## C# Example
+
+```csharp
+using System;
+using System.Collections.Generic;
+
+interface IComponent
+{
+    void Accept(IVisitor visitor);
+}
+
+class ConcreteComponentA : IComponent
+{
+    public void Accept(IVisitor visitor) => visitor.VisitConcreteComponentA(this);
+    public string ExclusiveMethodOfConcreteComponentA() => "A";
+}
+
+class ConcreteComponentB : IComponent
+{
+    public void Accept(IVisitor visitor) => visitor.VisitConcreteComponentB(this);
+    public string SpecialMethodOfConcreteComponentB() => "B";
+}
+
+interface IVisitor
+{
+    void VisitConcreteComponentA(ConcreteComponentA element);
+    void VisitConcreteComponentB(ConcreteComponentB element);
+}
+
+class ConcreteVisitor1 : IVisitor
+{
+    public void VisitConcreteComponentA(ConcreteComponentA element) =>
+        Console.WriteLine(element.ExclusiveMethodOfConcreteComponentA() + " + ConcreteVisitor1");
+
+    public void VisitConcreteComponentB(ConcreteComponentB element) =>
+        Console.WriteLine(element.SpecialMethodOfConcreteComponentB() + " + ConcreteVisitor1");
+}
+
+class ConcreteVisitor2 : IVisitor
+{
+    public void VisitConcreteComponentA(ConcreteComponentA element) =>
+        Console.WriteLine(element.ExclusiveMethodOfConcreteComponentA() + " + ConcreteVisitor2");
+
+    public void VisitConcreteComponentB(ConcreteComponentB element) =>
+        Console.WriteLine(element.SpecialMethodOfConcreteComponentB() + " + ConcreteVisitor2");
+}
+
+class Program
+{
+    static void ClientCode(List<IComponent> components, IVisitor visitor)
+    {
+        foreach (var component in components)
+            component.Accept(visitor);
+    }
+
+    static void Main()
+    {
+        var components = new List<IComponent> { new ConcreteComponentA(), new ConcreteComponentB() };
+
+        Console.WriteLine("The client code works with all visitors via the base Visitor interface:");
+        ClientCode(components, new ConcreteVisitor1());
+        Console.WriteLine();
+
+        Console.WriteLine("It allows the same client code to work with different types of visitors:");
+        ClientCode(components, new ConcreteVisitor2());
+    }
+}
+```
+
+## Go Example
+
+```go
+package main
+
+import "fmt"
+
+type Visitor interface {
+	VisitConcreteComponentA(element *ConcreteComponentA)
+	VisitConcreteComponentB(element *ConcreteComponentB)
+}
+
+type Component interface {
+	Accept(visitor Visitor)
+}
+
+type ConcreteComponentA struct{}
+
+func (c *ConcreteComponentA) Accept(visitor Visitor) {
+	visitor.VisitConcreteComponentA(c)
+}
+
+func (c *ConcreteComponentA) ExclusiveMethod() string { return "A" }
+
+type ConcreteComponentB struct{}
+
+func (c *ConcreteComponentB) Accept(visitor Visitor) {
+	visitor.VisitConcreteComponentB(c)
+}
+
+func (c *ConcreteComponentB) SpecialMethod() string { return "B" }
+
+type ConcreteVisitor1 struct{}
+
+func (v *ConcreteVisitor1) VisitConcreteComponentA(element *ConcreteComponentA) {
+	fmt.Println(element.ExclusiveMethod() + " + ConcreteVisitor1")
+}
+
+func (v *ConcreteVisitor1) VisitConcreteComponentB(element *ConcreteComponentB) {
+	fmt.Println(element.SpecialMethod() + " + ConcreteVisitor1")
+}
+
+type ConcreteVisitor2 struct{}
+
+func (v *ConcreteVisitor2) VisitConcreteComponentA(element *ConcreteComponentA) {
+	fmt.Println(element.ExclusiveMethod() + " + ConcreteVisitor2")
+}
+
+func (v *ConcreteVisitor2) VisitConcreteComponentB(element *ConcreteComponentB) {
+	fmt.Println(element.SpecialMethod() + " + ConcreteVisitor2")
+}
+
+func clientCode(components []Component, visitor Visitor) {
+	for _, component := range components {
+		component.Accept(visitor)
+	}
+}
+
+func main() {
+	components := []Component{&ConcreteComponentA{}, &ConcreteComponentB{}}
+
+	fmt.Println("The client code works with all visitors via the base Visitor interface:")
+	clientCode(components, &ConcreteVisitor1{})
+	fmt.Println()
+
+	fmt.Println("It allows the same client code to work with different types of visitors:")
+	clientCode(components, &ConcreteVisitor2{})
+}
+```
+
+## C++ Example
+
+```cpp
+#include <iostream>
+#include <memory>
+#include <string>
+#include <vector>
+
+class ConcreteComponentA;
+class ConcreteComponentB;
+
+class Visitor {
+public:
+    virtual ~Visitor() = default;
+    virtual void VisitConcreteComponentA(const ConcreteComponentA* element) const = 0;
+    virtual void VisitConcreteComponentB(const ConcreteComponentB* element) const = 0;
+};
+
+class Component {
+public:
+    virtual ~Component() = default;
+    virtual void Accept(const Visitor* visitor) const = 0;
+};
+
+class ConcreteComponentA : public Component {
+public:
+    void Accept(const Visitor* visitor) const override {
+        visitor->VisitConcreteComponentA(this);
+    }
+    std::string ExclusiveMethod() const { return "A"; }
+};
+
+class ConcreteComponentB : public Component {
+public:
+    void Accept(const Visitor* visitor) const override {
+        visitor->VisitConcreteComponentB(this);
+    }
+    std::string SpecialMethod() const { return "B"; }
+};
+
+class ConcreteVisitor1 : public Visitor {
+public:
+    void VisitConcreteComponentA(const ConcreteComponentA* element) const override {
+        std::cout << element->ExclusiveMethod() << " + ConcreteVisitor1\n";
+    }
+    void VisitConcreteComponentB(const ConcreteComponentB* element) const override {
+        std::cout << element->SpecialMethod() << " + ConcreteVisitor1\n";
+    }
+};
+
+class ConcreteVisitor2 : public Visitor {
+public:
+    void VisitConcreteComponentA(const ConcreteComponentA* element) const override {
+        std::cout << element->ExclusiveMethod() << " + ConcreteVisitor2\n";
+    }
+    void VisitConcreteComponentB(const ConcreteComponentB* element) const override {
+        std::cout << element->SpecialMethod() << " + ConcreteVisitor2\n";
+    }
+};
+
+void ClientCode(const std::vector<std::unique_ptr<Component>>& components, const Visitor* visitor) {
+    for (const auto& component : components) {
+        component->Accept(visitor);
+    }
+}
+
+int main() {
+    std::vector<std::unique_ptr<Component>> components;
+    components.push_back(std::make_unique<ConcreteComponentA>());
+    components.push_back(std::make_unique<ConcreteComponentB>());
+
+    std::cout << "The client code works with all visitors via the base Visitor interface:\n";
+    ConcreteVisitor1 visitor1;
+    ClientCode(components, &visitor1);
+    std::cout << "\n";
+
+    std::cout << "It allows the same client code to work with different types of visitors:\n";
+    ConcreteVisitor2 visitor2;
+    ClientCode(components, &visitor2);
+}
+```
+
+## Rust Example
+
+```rust
+enum Component {
+    ConcreteComponentA,
+    ConcreteComponentB,
+}
+
+impl Component {
+    fn exclusive_method(&self) -> &str {
+        match self {
+            Component::ConcreteComponentA => "A",
+            Component::ConcreteComponentB => "B",
+        }
+    }
+
+    fn accept(&self, visitor: &dyn Visitor) {
+        match self {
+            Component::ConcreteComponentA => visitor.visit_concrete_component_a(self),
+            Component::ConcreteComponentB => visitor.visit_concrete_component_b(self),
+        }
+    }
+}
+
+trait Visitor {
+    fn visit_concrete_component_a(&self, element: &Component);
+    fn visit_concrete_component_b(&self, element: &Component);
+}
+
+struct ConcreteVisitor1;
+
+impl Visitor for ConcreteVisitor1 {
+    fn visit_concrete_component_a(&self, element: &Component) {
+        println!("{} + ConcreteVisitor1", element.exclusive_method());
+    }
+    fn visit_concrete_component_b(&self, element: &Component) {
+        println!("{} + ConcreteVisitor1", element.exclusive_method());
+    }
+}
+
+struct ConcreteVisitor2;
+
+impl Visitor for ConcreteVisitor2 {
+    fn visit_concrete_component_a(&self, element: &Component) {
+        println!("{} + ConcreteVisitor2", element.exclusive_method());
+    }
+    fn visit_concrete_component_b(&self, element: &Component) {
+        println!("{} + ConcreteVisitor2", element.exclusive_method());
+    }
+}
+
+fn client_code(components: &[Component], visitor: &dyn Visitor) {
+    for component in components {
+        component.accept(visitor);
+    }
+}
+
+fn main() {
+    let components = vec![Component::ConcreteComponentA, Component::ConcreteComponentB];
+
+    println!("The client code works with all visitors via the base Visitor interface:");
+    client_code(&components, &ConcreteVisitor1);
+    println!();
+
+    println!("It allows the same client code to work with different types of visitors:");
+    client_code(&components, &ConcreteVisitor2);
+}
 ```
 
 ## Pairs well with

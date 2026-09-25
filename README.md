@@ -1,13 +1,25 @@
 # design-patterns
 
-Always-on Gang of Four design-pattern catalog plus **Pattern Check (Rule 0)**
-hook enforcement for [Claude Code](https://claude.com/claude-code).
+Always-on software-design skill (principles, control-flow rules, Tier 0
+language-native forms, and the Gang of Four catalog) plus **Pattern Check
+(Rule 0)** hook enforcement for [Claude Code](https://claude.com/claude-code).
 
 - 22 GoF patterns, sourced from refactoring.guru, with code examples in
   TypeScript, Python, Java, C#, Go, C++, and Rust, in `skills/design-patterns/references/`.
-- 10 smell detectors that suggest a pattern when code shape calls for one
+  Each one lists the *lighter idiomatic form* to try first in every language.
+- Control-flow rules (`references/control-flow.md`): no nested `if`
+  (guard clauses), max nesting depth 2, no `else` after `return`, the
+  **N+1 branches** ladder (`if` → dispatch map → Strategy / State), and
+  **N+1 query** prevention (batch / eager load / DataLoader).
+- Tier 0 non-GoF patterns (`references/extras.md`): Null Object, Result
+  type, Repository, Specification, Pipeline / Middleware, Dependency Injection.
+- 11 GoF smell detectors that suggest a pattern when code shape calls for one
   (Strategy, State, Visitor, Factory Method, Builder, Facade, Adapter,
   Singleton, Observer, Command, Template Method).
+- 6 control-flow smell detectors in all seven languages: `nested-if`,
+  `deep-nesting`, `else-after-return`, `conditional-ladder`,
+  `scattered-discriminator`, `n-plus-one`. They only report lines the current
+  edit touched.
 - Cross-file duplicate detector — flags shared shapes across files as strong
   Strategy/Visitor candidates.
 - `PreToolUse` hook that **blocks** Write/Edit/MultiEdit on TypeScript,
@@ -18,8 +30,10 @@ hook enforcement for [Claude Code](https://claude.com/claude-code).
   per-path pattern frequency.
 - `/pattern-review` slash command — on-demand cross-file project audit.
 
-**Tier 1** (preferred first): Factory Method, Abstract Factory, Builder,
-Singleton, Adapter, Facade, Strategy, Observer, Iterator, Template Method.
+**Tier 0** first (guard clause, dispatch map, null object, result type,
+repository, DI, language-native forms), then **Tier 1**: Factory Method,
+Abstract Factory, Builder, Adapter, Facade, Strategy, Observer, Iterator,
+Template Method. Singleton is Tier 1 by popularity but rejected by default.
 
 ---
 
@@ -163,6 +177,17 @@ in the file payload.
 | `observer`          | ≥3 of `addListener` / `on(` / `subscribe(` / `emit(` / `notify(` clustered in one class | Observer                          |
 | `command`           | class with `execute()` + `undo()` OR `Command[]` / `history` field                 | Command                               |
 | `template-method`   | abstract class with ≥2 abstract methods called via `this.` from one concrete method | Template Method                     |
+| `nested-if`         | `if` directly inside another `if` / bare `else` block                             | Guard clause, merged condition, `else if` |
+| `deep-nesting`      | control-flow depth (if / loop / switch / try) > `maxNestingDepth` (2)             | Guard clauses, extract function       |
+| `else-after-return` | `else` / `elif` after return / throw / raise / continue / break                   | Drop the `else`, dedent               |
+| `conditional-ladder`| if / else-if chain comparing one subject to literals, ≥3 branches                 | Dispatch map, Strategy                |
+| `scattered-discriminator` | one subject compared to string / enum literals at ≥3 sites in a file        | State, Strategy, polymorphism         |
+| `n-plus-one`        | DB / HTTP call (or sequential `await`) inside a loop, `forEach` / `map`, or comprehension | Batch query, eager load, DataLoader |
+
+`switch-on-type` skips switches marked exhaustive (`assertNever`, `: never`,
+`unreachable`). Control-flow smells report only lines the Edit / MultiEdit
+wrote (`smells.controlFlowScope: "edited"`). A `Write` or `/pattern-review`
+reports the whole file.
 
 ### Suppress a smell on one line
 
@@ -243,14 +268,21 @@ list. Highlights:
 - `forbiddenPatterns` — block `applied` of any listed pattern (use
   sparingly — most patterns deserve a fair hearing).
 - `smells.crossFile.enabled` — opt-in cross-file duplicate detection.
+- `smells.maxNestingDepth` (2), `smells.nestedIf`, `smells.elseAfterReturn`,
+  `smells.conditionalLadderMinBranches` (3),
+  `smells.scatteredDiscriminatorMinSites` (3). Set a number to `0` to disable
+  that detector.
+- `smells.nPlusOne.{enabled, flagAwaitInLoop, extraCallPatterns}`: add regex
+  sources for project-specific I/O calls (an internal SDK, a repository base).
+- `smells.controlFlowScope`: `"edited"` (default) or `"file"`.
 
 ---
 
 ## Tests
 
 ```bash
-npm test            # smoke + matrix (35 cases total, ephemeral sandbox)
-npm run test:smoke  # 19 hook smoke tests, fast
+npm test            # smoke + matrix (55 cases total, ephemeral sandbox)
+npm run test:smoke  # 39 hook smoke tests, fast
 npm run test:matrix # 16-case matrix against generated sandbox
 npm run lint        # shellcheck install.sh uninstall.sh
 npm run bundle      # regenerate dist/skill-bundle.md after editing references
@@ -267,7 +299,6 @@ CI runs all three on every push; a stale `dist/skill-bundle.md` fails the build.
 ## Roadmap
 
 - v1.1 — AST-based detection (ts-morph) to cut regex false positives.
-- v1.1 — multi-language references (`.python.md`, `.go.md`).
 - v1.1 — telemetry self-tuning (analyze-log auto-suggests config changes).
 - v1.2 — Windows install (`install.ps1`).
 

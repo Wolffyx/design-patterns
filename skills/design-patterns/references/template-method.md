@@ -38,6 +38,21 @@ subclasses override specific steps of the algorithm without changing its structu
 - You only have one concrete subclass → just write the algorithm directly
 - The "algorithm skeleton" is 3 lines → inheritance is overkill, use a function with callback parameters
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a higher-order function that takes the variable steps as callbacks |
+| Python | a function taking hook callables; an ABC only for framework-style extension |
+| Java | an abstract class is fine; or pass lambdas for the steps |
+| C# | pass delegates for the steps; an abstract class is fine |
+| Go | no inheritance — a function taking an interface of steps |
+| C++ | the NVI idiom, or CRTP |
+| Rust | a trait with default methods that call the required methods — this is the pattern, natively |
+
 ## TypeScript Example
 
 ```typescript

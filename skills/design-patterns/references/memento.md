@@ -40,6 +40,21 @@ of its implementation. This pattern enables undo functionality while preserving 
 - The state is immutable already → no snapshot needed, keep references
 - You only need one undo step → store one previous-state field, no Caretaker
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | immutable snapshots (`structuredClone` / spread) pushed to a history array; Immer patches |
+| Python | `copy.deepcopy` snapshots, frozen dataclasses |
+| Java | records as immutable snapshots |
+| C# | records + `with` snapshots |
+| Go | copy the struct value into a history slice |
+| C++ | copy value types into a `std::vector` history |
+| Rust | `#[derive(Clone)]` snapshots in a `Vec` |
+
 ## TypeScript Example
 
 ```typescript

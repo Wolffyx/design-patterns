@@ -38,6 +38,21 @@ different object types and representations through the same construction code.
 - Object has no optional or step-wise configuration → unnecessary
 - A simple object literal `{ a, b, c }` would do the job
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an options object merged with defaults: `{ ...defaults, ...opts }` |
+| Python | keyword arguments with defaults; `dataclasses.replace` for variants |
+| Java | records + static factories; hand-write a Builder only for >4 optional params |
+| C# | object initializers `new X { A = 1 }`, named/optional params, `with` on records |
+| Go | functional options: `New(addr, WithTimeout(5*time.Second))` |
+| C++ | designated initializers on an aggregate struct (C++20) |
+| Rust | struct update syntax `X { a: 1, ..Default::default() }` |
+
 ## TypeScript Example
 
 ```typescript

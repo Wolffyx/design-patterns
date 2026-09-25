@@ -20,6 +20,17 @@
  *   command               class with execute()+undo() OR Command[]/history field → Command
  *   template-method       abstract class w/ ≥2 abstract methods called via this. → Template Method
  *
+ * Control-flow detectors (see _control-flow-smells.js, all 7 languages):
+ *   nested-if               `if` directly inside `if`/`else` → guard clause / merged condition
+ *   deep-nesting            control-flow depth > maxNestingDepth (2) → guard clauses / extract fn
+ *   else-after-return       `else` after return/throw/raise/continue/break → drop the else
+ *   conditional-ladder      ≥3-branch if/else-if on one subject → dispatch map / Strategy
+ *   scattered-discriminator one subject compared to literals at ≥3 sites → State / Strategy
+ *   n-plus-one              DB/HTTP call or `await` inside a loop → batch / eager load
+ *
+ * switch-on-type skips switches marked exhaustive (assertNever, `: never`,
+ * unreachable) — an exhaustive switch over a closed union is Tier 0, not a smell.
+ *
  * Per-line suppression:
  *   Add `// pattern-smell: ignore <smellId>` on the same line OR the line above
  *   the detection. Use `*` to suppress all smells on that line.
@@ -39,6 +50,7 @@ const fs = require('fs');
 const path = require('path');
 const shared = require('./_pattern-shared');
 const corpus = require('./_smell-corpus');
+const controlFlow = require('./_control-flow-smells');
 
 const DEFAULT_CONFIG = {
     smells: {
@@ -48,6 +60,17 @@ const DEFAULT_CONFIG = {
         repeatedNewMinOccurrences: 3,
         constructorMaxParams: 5,
         godClassMinPublicMethods: 8,
+        maxNestingDepth: 2,
+        nestedIf: true,
+        elseAfterReturn: true,
+        conditionalLadderMinBranches: 3,
+        scatteredDiscriminatorMinSites: 3,
+        controlFlowScope: 'edited',
+        nPlusOne: {
+            enabled: true,
+            flagAwaitInLoop: true,
+            extraCallPatterns: [],
+        },
         boundaryViolationPaths: {
             guardedPath: '',
             forbiddenImports: [],
@@ -88,6 +111,7 @@ function deepMergeSmells(defs, user) {
             templateMethod: { ...defs.detectors.templateMethod, ...((u.detectors || {}).templateMethod || {}) },
         },
         crossFile: { ...defs.crossFile, ...(u.crossFile || {}) },
+        nPlusOne: { ...defs.nPlusOne, ...(u.nPlusOne || {}) },
     };
 }
 
@@ -187,6 +211,7 @@ function detectSwitchOnType(text, minCases) {
             }
             i++;
         }
+        if (controlFlow.hasExhaustiveMarker(text.slice(start, i))) continue;
         if (caseCount >= minCases) {
             findings.push({
                 smellId: 'switch-on-type',
@@ -548,6 +573,13 @@ if (det.singleton.enabled)      results.push(...detectSingleton(fileText));
 if (det.observer.enabled)       results.push(...detectObserver(fileText, det.observer.minClusterSize));
 if (det.command.enabled)        results.push(...detectCommand(fileText));
 if (det.templateMethod.enabled) results.push(...detectTemplateMethod(fileText, det.templateMethod.minAbstract));
+// control-flow smells: only lines this edit touched (legacy code elsewhere in
+// the file is not the agent's change) unless controlFlowScope === 'file'
+const cfRanges = s.controlFlowScope === 'file'
+    ? null
+    : controlFlow.editedLineRanges(fileText, tool, toolInput);
+results.push(...controlFlow.detectAll(fileText, shared.langIdForFile(filePath), s)
+    .filter(f => controlFlow.inEditScope(f, cfRanges)));
 
 for (const finding of results) emit(fileRel, fileText, finding);
 

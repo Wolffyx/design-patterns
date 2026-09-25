@@ -41,6 +41,12 @@ in the commands below.
    - **Observer** (file:line — class with N pub/sub verbs)
    - **Command** (file:line — class)
    - **Template Method** (file:line — class)
+   - **Nested if** (file:line — outer if line)
+   - **Deep nesting** (file:line — depth N)
+   - **Else after return** (file:line)
+   - **Conditional ladder** (file:line — subject, N branches)
+   - **Scattered discriminator** (file:line — subject, N sites)
+   - **N+1 queries** (file:line — call inside loop)
    - **Cross-file duplicates** (signature — list of files)
    - **Decision-log trends** (counts by decision, top reject reasons,
      friction hotspots from the analyzer JSON)

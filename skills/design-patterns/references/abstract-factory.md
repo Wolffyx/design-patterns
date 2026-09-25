@@ -39,6 +39,21 @@ implementations.
 - The "families" only have one member each → flat Factory Method is enough
 - Variants will never be added → just instantiate concrete classes directly
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an object of factory functions per family: `{ button: () => …, checkbox: () => … }` |
+| Python | one module per family, or a dict of callables selected once at startup |
+| Java | a record of `Supplier`s, or an interface with default methods |
+| C# | a record of `Func<>` delegates, or one interface registered per family in DI |
+| Go | a struct of `func` fields |
+| C++ | a struct of `std::function`s, or a template policy parameter chosen at compile time |
+| Rust | a trait with associated types, passed as a generic `F: Factory` |
+
 ## TypeScript Example
 
 ```typescript

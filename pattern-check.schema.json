@@ -120,6 +120,21 @@
         "repeatedNewMinOccurrences": { "type": "integer", "minimum": 2 },
         "constructorMaxParams": { "type": "integer", "minimum": 1 },
         "godClassMinPublicMethods": { "type": "integer", "minimum": 1 },
+        "maxNestingDepth": { "type": "integer", "minimum": 0, "description": "Max control-flow nesting (if/loop/switch/try) inside a block; deeper → deep-nesting. 0 disables." },
+        "nestedIf": { "type": "boolean", "description": "Flag an `if` directly inside another `if`/`else` block." },
+        "elseAfterReturn": { "type": "boolean", "description": "Flag `else`/`elif` after a branch ending in return/throw/raise/continue/break." },
+        "conditionalLadderMinBranches": { "type": "integer", "minimum": 0, "description": "if/else-if chain on one subject with ≥ N literal branches → dispatch map. 0 disables." },
+        "scatteredDiscriminatorMinSites": { "type": "integer", "minimum": 0, "description": "Same subject compared to string/enum literals at ≥ N sites → State/Strategy. 0 disables." },
+        "controlFlowScope": { "type": "string", "enum": ["edited", "file"], "description": "'edited' reports control-flow smells only on lines the Edit/MultiEdit wrote; 'file' reports the whole file." },
+        "nPlusOne": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "flagAwaitInLoop": { "type": "boolean", "description": "Also flag any sequential `await` inside a loop body." },
+            "extraCallPatterns": { "type": "array", "items": { "type": "string" }, "description": "Extra JS regex sources for project-specific I/O calls (e.g. \\bmyApi\\.\\w+\\s*\\()." }
+          },
+          "additionalProperties": false
+        },
         "boundaryViolationPaths": {
           "type": "object",
           "properties": {

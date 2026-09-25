@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "design-patterns",
-  "description": "Gang of Four design-pattern catalog plus Pattern Check (Rule 0) enforcement for Claude Code.",
+  "description": "Control-flow rules and the Gang of Four design-pattern catalog, plus Pattern Check (Rule 0) enforcement for Claude Code.",
   "owner": {
     "name": "wolffyx",
     "url": "https://github.com/wolffyx"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "design-patterns",
-      "description": "22 GoF patterns (code in TypeScript, Python, Java, C#, Go, C++, Rust), Tier-1 priority list, hook-enforced preamble on every source edit across all 7 languages, smell detection (Singleton/Observer/Command/Template Method + 6 more), cross-file duplicate finder, decision-log analyzer, /pattern-review command.",
+      "description": "22 GoF patterns (code in TypeScript, Python, Java, C#, Go, C++, Rust), Tier-1 priority list, hook-enforced preamble on every source edit across all 7 languages, control-flow rules (no nested ifs, N+1 branches ladder, N+1 queries) with 6 detectors, Tier 0 non-GoF patterns (Null Object, Result, Repository, DI), GoF smell detection (Singleton/Observer/Command/Template Method + 7 more), cross-file duplicate finder, decision-log analyzer, /pattern-review command.",
       "source": "./",
       "category": "code-quality"
     }

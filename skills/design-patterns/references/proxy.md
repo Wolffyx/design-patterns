@@ -42,6 +42,21 @@ through to the original object.
 - A simple lazy getter (`get foo() { return this._foo ??= compute() }`) suffices
 - The "proxy" doesn't add behavior beyond delegation → just use the real object
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an ES `Proxy`, a lazy getter, or a memoized function |
+| Python | `__getattr__` forwarding, `functools.cached_property` for lazy loading |
+| Java | `java.lang.reflect.Proxy` for interfaces, or AOP in a DI framework |
+| C# | `Lazy<T>`, `DispatchProxy` |
+| Go | a wrapper struct implementing the same interface |
+| C++ | smart pointers already are proxies; otherwise a thin wrapper class |
+| Rust | `OnceCell` for lazy init; a wrapper implementing the same trait |
+
 ## TypeScript Example
 
 ```typescript
