@@ -179,6 +179,11 @@ A conditional that picks *behavior* by a discriminator (`kind`, `type`,
 add branch N+1, check the rung first. Refactor before adding the branch, not
 after.
 
+The refactor is part of the change that adds the branch. Make it in the same
+edit even when the request only names the new variant ("add the adyen
+provider"). Adding the branch and offering the refactor as a follow-up breaks
+the rule: the ladder is what the new variant costs.
+
 | Rung | Shape | Move up when |
 |---|---|---|
 | 1 | `if` / `else` (≤ 2 branches) | a 3rd branch arrives |
