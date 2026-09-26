@@ -50,7 +50,9 @@ Factory, Builder, Adapter, Facade, Strategy, Observer, Iterator, Template
 Method. Singleton is Tier 1 but rejected by default.
 
 **Anti-overuse rule:** bug fixes, <50-line code with one caller, or code the
-repo already solves — answer `no GoF pattern`. Most edits are this.
+repo already solves — answer `no GoF pattern`. Most edits are this. It covers
+GoF patterns only: the control-flow rules above apply to small code too (3+
+branches on one key → `Dispatch Map (Tier 0) — applied`).
 
 **Bypass** for mechanical codemods / bulk renames (use the file's line-comment
 token — `//` for TS/Java/C#/Go/C++/Rust, `#` for Python):

@@ -199,6 +199,16 @@ Two more triggers skip straight to rung 2 or 3:
 - **Variants will keep coming.** Integrations, payment providers, file
   formats, message types. Use rung 2 or 3 from the start.
 
+Two things are **not** exceptions:
+
+- **Different call shapes per branch.** One provider takes `amount / 100`,
+  another a `currency=` keyword: each map entry is a small adapter (a lambda
+  or named function with the shared signature) that absorbs the difference.
+  Normalizing the call shape is what the map is for.
+- **Small code, one caller.** The anti-overuse rule (SKILL.md §3) is about GoF
+  patterns. It does not exempt an 8-line function from R4; the Pattern check
+  line is `Dispatch Map (Tier 0) — applied`, not `no GoF pattern — rejected`.
+
 Exhaustive `switch` / `match` over a **closed** union (TS `never` check,
 Java sealed + pattern switch, Rust `enum` + `match`, C# switch expression
 with a discard throw) is a legitimate rung-2 form: the compiler lists every

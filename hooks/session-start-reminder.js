@@ -42,6 +42,8 @@ const lines = [
     '',
     'Anti-overuse rule: bug fixes, <50-line code with one caller, or code the',
     'repo already solves \u2014 answer `no GoF pattern`. Most edits are this.',
+    'It covers GoF patterns only: the control-flow rules above apply to small',
+    'code too (3+ branches on one key \u2192 Dispatch Map (Tier 0) \u2014 applied).',
     '',
     'Bypass for mechanical codemods / bulk renames (use the file\u2019s comment token):',
     '    // pattern-check: skip <reason>      (or `# pattern-check: skip` in Python)',

@@ -89,7 +89,7 @@ does not replace the preamble on substantive edits.
 
 ---
 
-## 3. Anti-overuse rule (READ FIRST — overrides everything below)
+## 3. Anti-overuse rule (READ FIRST — overrides pattern selection, not §5–§6)
 
 **Most edits answer `Pattern check: no GoF pattern — rejected — <reason>`.
 That is the right default.** The hook fires on every substantive edit because
@@ -114,6 +114,14 @@ Patterns and SOLID exist to reduce complexity, not add it. Do NOT:
 
 This rule overrides "always pick a Tier 1 pattern". Project ethos: three
 similar lines of code beat a premature abstraction.
+
+**Scope: GoF patterns only.** §3 decides whether to add a GoF pattern
+(Tier 1–3). It never exempts code from the control-flow and function rules
+(§5, §6) or the Tier 0 forms they call for, whatever the size of the code or
+the number of callers. A chain that reaches three branches on one key gets a
+dispatch map even in an 8-line function with one caller, and the line reads
+`Pattern check: Dispatch Map (Tier 0) — applied — …`, not
+`no GoF pattern — rejected`.
 
 When the rule applies, emit:
 
@@ -165,7 +173,7 @@ fixes are in `references/control-flow.md`.
 | R1 | **No nested `if`.** Invert and exit early (guard clause), merge conditions, use `else if`, or extract a function. | `nested-if` |
 | R2 | **Max control-flow depth 2** (if / loop / switch / try) inside a function. Depth 3 means extract. | `deep-nesting` |
 | R3 | **No `else` after `return` / `throw` / `raise` / `continue` / `break`.** Drop the `else` and dedent. | `else-after-return` |
-| R4 | **N+1 branches.** A conditional that selects behavior climbs a ladder: ≤ 2 branches `if`/`else` → 3rd branch: **dispatch map** (or exhaustive `match` on a closed enum) → branches need multiple operations or state: **Strategy / State**. The same discriminator compared at a 3rd site: centralize it. Refactor *before* adding branch N+1, in the same change, even when the request only asks for the new variant; never add the branch and offer the refactor as a follow-up. | `conditional-ladder`, `scattered-discriminator` |
+| R4 | **N+1 branches.** A conditional that selects behavior climbs a ladder: ≤ 2 branches `if`/`else` → 3rd branch: **dispatch map** (or exhaustive `match` on a closed enum) → branches need multiple operations or state: **Strategy / State**. The same discriminator compared at a 3rd site: centralize it. Refactor *before* adding branch N+1, in the same change, even when the request only asks for the new variant; never add the branch and offer the refactor as a follow-up. Different call signatures per branch are no exception: each map entry adapts its own call. | `conditional-ladder`, `scattered-discriminator` |
 | R5 | **N+1 queries.** Never one round-trip per item. A call that depends on the loop item → batch it (`IN` / `= ANY` / bulk endpoint) and join in memory; a call that doesn't → hoist it above the loop; a relation read per row → eager-load it; a write per item → bulk write; a GraphQL field resolver → DataLoader. `Promise.all` over N calls is still N round-trips. Sequential awaits in a loop are fine only when each step needs the previous one (pagination). | `n-plus-one`, `await-in-loop` |
 
 Compound conditions with more than 2 terms go into a named predicate
@@ -206,7 +214,8 @@ Details and examples in `references/functions.md`.
 
 1. Read this SKILL.md when starting design or coding work.
 2. Apply §5 and §6 to the code you are about to write, whatever the pattern answer.
-3. Apply the anti-overuse rule (§3). If it triggers, stop here and emit `rejected`.
+3. Apply the anti-overuse rule (§3) to the GoF question. If it triggers, emit `rejected`
+   and skip steps 4–5; the §5 and §6 rules from step 2 still apply.
 4. Pick a candidate: Tier 0 first, then the decision tree in `references/catalog.md`.
 5. Read `references/<slug>.md` for the chosen pattern (intent, lighter forms,
    code, "Don't use when"). Cross-check `.claude/design-patterns-project-usage.md`.
