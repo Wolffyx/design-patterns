@@ -46,7 +46,12 @@ fi
 
 # --- restore latest backup if any ----------------------------------------
 
-LATEST_BACKUP="$(ls -1dt "$CLAUDE_DIR/backups/design-patterns-"* 2>/dev/null | head -n 1 || true)"
+# backup dirs end in a sortable YYYYmmdd-HHMMSS stamp: glob order is
+# chronological, so the last match is the newest
+LATEST_BACKUP=""
+for dir in "$CLAUDE_DIR/backups/design-patterns-"*; do
+  [ -d "$dir" ] && LATEST_BACKUP="$dir"
+done
 if [ -n "$LATEST_BACKUP" ]; then
   if [ -d "$LATEST_BACKUP/skills-design-patterns" ] && [ ! -e "$SKILL_LINK" ]; then
     mv "$LATEST_BACKUP/skills-design-patterns" "$SKILL_LINK"
