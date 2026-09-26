@@ -1,0 +1,38 @@
+[
+  {
+    "smellId": "singleton",
+    "line": 5
+  },
+  {
+    "smellId": "template-method",
+    "line": 12
+  },
+  {
+    "smellId": "long-constructor",
+    "line": 21
+  },
+  {
+    "smellId": "instanceof-chain",
+    "line": 25
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 27
+  },
+  {
+    "smellId": "nested-if",
+    "line": 37
+  },
+  {
+    "smellId": "deep-nesting",
+    "line": 38
+  },
+  {
+    "smellId": "boolean-flag-param",
+    "line": 45
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 48
+  }
+]

@@ -65,16 +65,51 @@
   "log": {
     "enabled": true,
     "path": ".claude/pattern-decision-log.jsonl",
-    "blockStatsPath": ".claude/pattern-block-stats.jsonl"
+    "blockStatsPath": ".claude/pattern-block-stats.jsonl",
+    "smellLogPath": ".claude/pattern-smell-log.jsonl"
   },
 
   "smells": {
     "enabled": true,
+    "parser": "auto",
+    "scope": "edited",
+    "severity": {
+      "nested-if": "advise",
+      "n-plus-one": "advise"
+    },
     "switchOnTypeMinCases": 4,
     "instanceofChainMinBranches": 3,
     "repeatedNewMinOccurrences": 3,
     "constructorMaxParams": 5,
     "godClassMinPublicMethods": 8,
+    "maxNestingDepth": 2,
+    "nestedIf": true,
+    "elseAfterReturn": true,
+    "conditionalLadderMinBranches": 3,
+    "scatteredDiscriminatorMinSites": 3,
+    "maxFunctionLines": 50,
+    "maxParams": 4,
+    "booleanFlagParam": true,
+    "maxComplexity": 10,
+    "swallowedException": true,
+    "nPlusOne": {
+      "enabled": true,
+      "minConfidence": "medium",
+      "flagAwaitInLoop": true,
+      "includeWhileLoops": false,
+      "smallLoopMax": 10,
+      "followLocalFunctions": true,
+      "lazyLoad": true,
+      "resolvers": true,
+      "extraCallPatterns": [],
+      "dataAccessReceivers": "",
+      "crossFile": {
+        "enabled": true,
+        "maxDepth": 2,
+        "timeBudgetMs": 400,
+        "cachePath": ".claude/cache/pattern-io-index.json"
+      }
+    },
     "boundaryViolationPaths": {
       "guardedPath": "",
       "forbiddenImports": [],

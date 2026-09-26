@@ -41,6 +41,21 @@ class, and make their objects interchangeable.
 - The "strategies" are 1-line functions → pass a function instead of building a class hierarchy
 - A simple `switch` over 2-3 cases is clearer than 3 strategy classes
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | pass a function, or a `Record<Key, Fn>` dispatch map |
+| Python | pass a callable, or a dict of functions |
+| Java | a lambda / functional interface (`Comparator`) |
+| C# | a `Func<>` delegate |
+| Go | a func-typed parameter |
+| C++ | `std::function`, or a template parameter (static strategy) |
+| Rust | a closure `impl Fn(..)`, or a generic `S: Strategy` |
+
 ## TypeScript Example
 
 ```typescript

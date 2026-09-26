@@ -29,6 +29,9 @@ const DEFAULT_CONFIG = {
             'Adapter', 'Facade', 'Decorator', 'Composite', 'Proxy', 'Bridge', 'Flyweight',
             'Strategy', 'Observer', 'Iterator', 'Template Method', 'Command', 'State',
             'Chain of Responsibility', 'Mediator', 'Memento', 'Visitor',
+            // Tier 0 — see skills/design-patterns/references/extras.md + control-flow.md
+            'Guard Clause', 'Dispatch Map', 'Null Object', 'Result', 'Repository',
+            'Specification', 'Pipeline', 'Middleware', 'Dependency Injection',
             'no-pattern', 'no GoF pattern',
         ],
         decisions: ['applied', 'extended', 'rejected', 'refactor-suggest'],
@@ -84,6 +87,7 @@ const DEFAULT_CONFIG = {
         enabled: true,
         path: '.claude/pattern-decision-log.jsonl',
         blockStatsPath: '.claude/pattern-block-stats.jsonl',
+        smellLogPath: '.claude/pattern-smell-log.jsonl',
     },
 };
 
@@ -146,6 +150,95 @@ function expandHome(p) {
     if (!p) return p;
     if (p.startsWith('~')) return path.join(require('os').homedir(), p.slice(1));
     return p;
+}
+
+// --- config-supplied paths -------------------------------------------------
+// A cloned repo ships its own .claude/pattern-check.config.json, so every path
+// it names is untrusted. Log and cache files stay inside <project>/.claude/
+// (the session cache may also live in ~/.claude/cache/), checked after
+// symlinks are followed. A path that escapes resolves to null and the caller
+// skips the read or write.
+
+function lexists(p) {
+    try { fs.lstatSync(p); return true; } catch { return false; }
+}
+
+/** Real path of `p`; the part that does not exist yet is appended as-is. */
+function realPathOf(p) {
+    const rest = [];
+    let cur = path.resolve(p);
+    while (!lexists(cur) && path.dirname(cur) !== cur) {
+        rest.unshift(path.basename(cur));
+        cur = path.dirname(cur);
+    }
+    try { return path.join(fs.realpathSync(cur), ...rest); } catch { return null; }
+}
+
+function isInside(root, p) {
+    const rel = path.relative(root, p);
+    return rel !== '' && rel.split(path.sep)[0] !== '..' && !path.isAbsolute(rel);
+}
+
+/** <project>/.claude as a real path, or null when it is a symlink out of the project. */
+function projectClaudeRoot() {
+    const project = realPathOf(process.cwd());
+    const dir = realPathOf(path.join(process.cwd(), '.claude'));
+    return project && dir && isInside(project, dir) ? dir : null;
+}
+
+function confinedPath(p, roots) {
+    if (typeof p !== 'string' || !p) return null;
+    const real = realPathOf(path.resolve(process.cwd(), expandHome(p)));
+    return real && roots.some(r => r && isInside(r, real)) ? real : null;
+}
+
+/** A log or cache file named by config, kept inside <project>/.claude/ — else null. */
+function projectFile(p) {
+    return confinedPath(p, [projectClaudeRoot()]);
+}
+
+/** The session cache: inside <project>/.claude/ or ~/.claude/cache/ — else null. */
+function cacheFile(p) {
+    const homeCache = realPathOf(path.join(require('os').homedir(), '.claude', 'cache'));
+    return confinedPath(p, [projectClaudeRoot(), homeCache]);
+}
+
+// --- config-supplied patterns ----------------------------------------------
+
+/** Does filePath end in one of `exts`? Extensions match literally (`c++` too). */
+function hasExtension(filePath, exts) {
+    const lower = String(filePath || '').toLowerCase();
+    return (exts || []).some(ext => lower.endsWith('.' + String(ext).toLowerCase()));
+}
+
+const MAX_CONFIG_REGEX = 500;
+
+/**
+ * Star height > 1: a quantified group that holds a quantifier — (a+)+,
+ * (?:(ab)*)* — the shape behind catastrophic backtracking. Escapes and
+ * character classes are blanked first, then innermost groups are folded one
+ * at a time. Heuristic: bounded `{n}` repeats count too, `?` does not.
+ */
+function hasNestedQuantifier(source) {
+    let s = source.replace(/\\./g, 'a').replace(/\[[^\]]*\]/g, 'a');
+    const inner = /\(([^()]*)\)([*+{]?)/;
+    for (let m = inner.exec(s); m; m = inner.exec(s)) {
+        const quantified = /[*+}\x01]/.test(m[1]);
+        if (quantified && m[2]) return true;
+        // \x01 marks a folded group that repeats (never appears in a source)
+        s = s.slice(0, m.index) + (quantified || m[2] ? '\x01' : 'a') + s.slice(m.index + m[0].length);
+    }
+    return false;
+}
+
+/**
+ * Compile a regex source taken from project config. Invalid, oversized or
+ * backtracking-prone sources return null so the caller keeps its default.
+ */
+function configRegExp(source, flags) {
+    const ok = typeof source === 'string' && source.length <= MAX_CONFIG_REGEX && !hasNestedQuantifier(source);
+    if (!ok) return null;
+    try { return new RegExp(source, flags); } catch { return null; }
 }
 
 // --- glob matcher (minimal — **/ any prefix, ** any segments, * non-slash) --
@@ -230,14 +323,10 @@ function detectTriggers(payloadInfo, triggers, langId) {
     if (triggers.newFile && payloadInfo.isNewFile && countNonWhitespaceLines(t) > 0) {
         reasons.push('new file');
     }
-    if (!payloadInfo.isNewFile && typeof triggers.diffLineThreshold === 'number') {
-        const addedLines = countNonWhitespaceLines(t);
-        const removedLines = countNonWhitespaceLines(payloadInfo.oldText);
-        const diff = Math.max(addedLines, removedLines);
-        if (Number.isFinite(triggers.diffLineThreshold) && diff >= triggers.diffLineThreshold) {
-            reasons.push('diff size ' + diff + ' \u2265 ' + triggers.diffLineThreshold + ' lines');
-        }
-    }
+    const threshold = triggers.diffLineThreshold;
+    const diff = Math.max(countNonWhitespaceLines(t), countNonWhitespaceLines(payloadInfo.oldText));
+    const bigDiff = !payloadInfo.isNewFile && typeof threshold === 'number' && Number.isFinite(threshold) && diff >= threshold;
+    if (bigDiff) reasons.push('diff size ' + diff + ' \u2265 ' + threshold + ' lines');
     return reasons;
 }
 
@@ -440,6 +529,10 @@ module.exports = {
     readStdin,
     safeJson,
     expandHome,
+    projectFile,
+    cacheFile,
+    hasExtension,
+    configRegExp,
     matchesGlob,
     matchesGlobAny,
     toRelativePath,

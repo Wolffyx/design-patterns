@@ -1,9 +1,10 @@
 ---
 name: pattern-review
 description: >
-  On-demand cross-file design-pattern review. Scans the project's TypeScript
-  source, runs every smell detector from pattern-smell-detector.js (regex-
-  based, fast), aggregates the decision log via analyze-log.js, and produces
+  On-demand cross-file design-pattern review. Scans the project's source in
+  every supported language (TypeScript, Python, Java, C#, Go, C++, Rust), runs
+  every smell detector (GoF shapes, control flow, functions, N+1) from
+  pattern-smell-detector.js (regex-based, fast), aggregates the decision log via analyze-log.js, and produces
   a grouped markdown report. Read-only — does not modify code. Use when the
   user runs `/pattern-review` or asks for a project-wide pattern audit.
 ---
@@ -28,8 +29,12 @@ without editing any code.
    Capture stdout. If the file does not exist, treat the section as empty.
 
 2. **File enumeration.** Pick the first existing root: `src/`, `apps/`,
-   `packages/`. Walk for `.ts`/`.tsx` files, excluding
-   `*.test.ts`, `*.spec.ts`, `*.d.ts`, `*.types.ts`, `node_modules/`, `dist/`.
+   `packages/`, `lib/`, `cmd/`, else the repo root. Walk for source files in
+   any supported language: `.ts` `.tsx` `.mts` `.cts` `.py` `.java` `.cs`
+   `.go` `.rs` `.cpp` `.cc` `.cxx` `.hpp` `.hh` `.hxx` `.h`. Exclude test and
+   generated files (`*.test.*`, `*.spec.*`, `*.d.ts`, `test_*.py`, `*_test.py`,
+   `*_test.go`, `*.pb.go`, `*Test.java`, `*Tests.cs`, `*.g.cs`, `tests/`) and
+   `node_modules/`, `dist/`, `build/`, `target/`, `vendor/`, `.venv/`.
    Cap at 200 files (warn in report if truncated).
 
 3. **Per-file detection.** For each file, run:
@@ -56,7 +61,28 @@ without editing any code.
    ### Instanceof chain
    - …
 
-   ### …  (one section per smell id)
+   ### …  (one section per GoF smell id)
+
+   ### Nested if / Deep nesting / Else after return
+   - <file:line> — <message>
+
+   ### Conditional ladder / Scattered discriminator
+   - <file:line> — <message>
+
+   ### Long function / Long parameter list / Boolean flag / Complexity
+   - <file:line> — <message>
+
+   ### Swallowed errors
+   - <file:line> — <message>
+
+   ### N+1 queries (grouped by kind: per-item, loop-invariant, N writes, lazy load, resolver)
+   - <file:line> — <message>
+
+   ### Sequential awaits in loops
+   - <file:line> — <message>
+
+   ### Smell tuning (from the analyzer's `smells` array)
+   - <smellId> — reported N · suppressed N — <suggestion if any>
 
    ### Cross-file duplicates
    - <signature> — <fileA>, <fileB>
@@ -76,6 +102,6 @@ without editing any code.
 ## Notes
 
 - If `${CLAUDE_PLUGIN_ROOT}` is unset (skill running outside the plugin),
-  fall back to `~/.claude/hooks/` paths.
+  fall back to `~/.claude/design-patterns/hooks/` paths.
 - The smell detector reads the **on-disk** content of each file, so the
   report reflects the current working tree (no fetching from git history).

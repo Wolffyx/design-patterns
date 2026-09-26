@@ -39,6 +39,21 @@ special wrapper objects that contain the behaviors.
 - Higher-order functions or middleware patterns already solve it (e.g. Redux/Zustand middleware)
 - Only one wrapper layer is needed → just call the wrapper function directly
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a higher-order function `withRetry(fn)`, or middleware |
+| Python | a `@decorator` function (with `functools.wraps`) |
+| Java | a wrapper implementing the same interface; `Function.andThen` for plain functions |
+| C# | a wrapper registered via DI decoration; delegate composition |
+| Go | middleware of shape `func(http.Handler) http.Handler` |
+| C++ | a wrapping lambda, or a template wrapper |
+| Rust | a wrapper struct implementing the same trait (tower `Layer` style) |
+
 ## TypeScript Example
 
 ```typescript

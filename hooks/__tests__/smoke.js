@@ -369,6 +369,266 @@ class Sup {
     assert(!r.stderr.includes('Singleton'), `singleton should be suppressed; got: ${r.stderr}`);
 });
 
+// --- control-flow smells --------------------------------------------------
+
+function smells(relPath, content, toolInput) {
+    const f = writeFile(relPath, content);
+    return run('pattern-smell-detector.js', {
+        tool_name: toolInput ? 'Edit' : 'Write',
+        tool_input: { file_path: f, ...(toolInput || {}) },
+    }).stderr;
+}
+
+check('nested-if (TS) — ignores braces in strings/comments', () => {
+    const err = smells('src/cf-nested.ts', `
+// if (a) { if (b) { } }
+export function f(o: any) {
+  const s = "if (x) { if (y) {";
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+}
+`);
+    assert(err.includes('cf-nested.ts:6 `if` nested in `if`'), `expected nested-if at line 6; got: ${err}`);
+    assert((err.match(/nested in/g) || []).length === 1, `expected exactly one nested-if; got: ${err}`);
+});
+
+check('deep-nesting (Python) — `with` is transparent, not counted', () => {
+    const err = smells('src/cf_deep.py', `
+def f(ids):
+    for i in ids:
+        if i:
+            with open(i) as fh:
+                if fh:
+                    pass
+`);
+    assert(err.includes('nesting depth 3 (max 2)'), `expected depth 3; got: ${err}`);
+});
+
+check('else-after-return (Go) + one finding per else-if chain (TS)', () => {
+    const go = smells('src/cf_else.go', `
+package x
+func F(err error) error {
+	if err != nil {
+		return err
+	} else {
+		return nil
+	}
+}
+`);
+    assert(go.includes('`else` after `return`'), `expected Go finding; got: ${go}`);
+    const ts = smells('src/cf-chain.ts', `
+export function g(k: string) {
+  if (k === "a") {
+    return 1;
+  } else if (k === "b") {
+    return 2;
+  } else if (k === "c") {
+    return 3;
+  } else {
+    return 4;
+  }
+}
+`);
+    assert((ts.match(/after `return`/g) || []).length === 1, `expected one chain finding; got: ${ts}`);
+    assert(ts.includes('ladder on `k` (3 branches)'), `expected ladder; got: ${ts}`);
+});
+
+check('python for-else after break is not else-after-return', () => {
+    const err = smells('src/cf_forelse.py', `
+def f(xs):
+    for x in xs:
+        if x:
+            break
+    else:
+        done()
+`);
+    assert(!err.includes('after `break`'), `for-else must not flag; got: ${err}`);
+});
+
+check('scattered-discriminator (Python)', () => {
+    const err = smells('src/cf_scatter.py', `
+def a(o):
+    if o.status == "new":
+        pass
+def b(o):
+    if o.status == "paid":
+        pass
+def c(o):
+    if o.status == "shipped":
+        pass
+`);
+    assert(err.includes('`o.status` compared to literals at 3 sites'), `expected scattered; got: ${err}`);
+});
+
+check('n-plus-one: loop, forEach, comprehension; zero-arg execute() ignored', () => {
+    const ts = smells('src/cf-n1.ts', `
+export async function f(ids: string[], cmds: any[]) {
+  for (const id of ids) {
+    await repo.findById(id);
+  }
+  ids.forEach(id => db.query("select 1", [id]));
+  cmds.forEach(c => c.execute());
+}
+`);
+    assert(ts.includes('`.findById(` once per'), `expected findById; got: ${ts}`);
+    assert(ts.includes('`.query(` once per'), `expected query in forEach; got: ${ts}`);
+    assert(!ts.includes('execute'), `Command.execute() must not flag; got: ${ts}`);
+    const py = smells('src/cf_n1.py', `
+def f(urls):
+    return [requests.get(u) for u in urls]
+`);
+    assert(py.includes('`requests.get(` once per'), `expected comprehension N+1; got: ${py}`);
+});
+
+check('switch-on-type skips switch marked exhaustive', () => {
+    const err = smells('src/cf-exh.ts', `
+function run(n: any) {
+  switch (n.kind) {
+    case "a": return 1;
+    case "b": return 2;
+    case "c": return 3;
+    case "d": return 4;
+    default: return assertNever(n.kind);
+  }
+}
+`);
+    assert(!err.includes('switch-on-type'), `exhaustive switch must not flag; got: ${err}`);
+});
+
+check('control-flow smells scoped to edited lines on Edit', () => {
+    const body = `
+export function f(o: any) {
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+  const y = 1;
+}
+`;
+    const err = smells('src/cf-scope.ts', body, { old_string: 'const y = 2;', new_string: 'const y = 1;' });
+    assert(!err.includes('nested in'), `untouched nested-if must not flag on Edit; got: ${err}`);
+    const err2 = smells('src/cf-scope.ts', body, { old_string: 'x', new_string: '    if (o.b) { go(); }' });
+    assert(err2.includes('nested in'), `edited nested-if must flag; got: ${err2}`);
+});
+
+// --- smell gate (PreToolUse) + smell log + span scoping -------------------
+
+function withConfig(config, fn) {
+    const p = path.join(SANDBOX, '.claude', 'pattern-check.config.json');
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(config), 'utf8');
+    try { fn(); } finally { fs.rmSync(p, { force: true }); }
+}
+
+const LEGACY = `
+export function legacy(o: any) {
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+}
+export function fresh(o: any) {
+  return o;
+}
+`;
+
+check('smell gate: no block severity configured → allow', () => {
+    const f = writeFile('src/gate0.ts', LEGACY);
+    const r = run('pattern-smell-gate.js', {
+        tool_name: 'Edit',
+        tool_input: { file_path: f, old_string: '  return o;', new_string: '  if (o) {\n    if (o.x) { return 1; }\n  }\n  return o;' },
+    });
+    assert(r.status === 0, `expected allow; got ${r.status}: ${r.stderr}`);
+});
+
+check('smell gate: blocks a new nested-if, ignores legacy ones, honours ignore + dry-run', () => {
+    withConfig({ smells: { severity: { 'nested-if': 'block' } } }, () => {
+        const f = writeFile('src/gate1.ts', LEGACY);
+        const nested = { file_path: f, old_string: '  return o;', new_string: '  if (o) {\n    if (o.x) { return 1; }\n  }\n  return o;' };
+        const r = run('pattern-smell-gate.js', { tool_name: 'Edit', tool_input: nested });
+        assert(r.status === 2, `expected block; got ${r.status}: ${r.stderr}`);
+        assert(r.stderr.includes('BLOCKED by smell gate') && r.stderr.includes('nested in'), `block message; got: ${r.stderr}`);
+
+        const unrelated = run('pattern-smell-gate.js', {
+            tool_name: 'Edit',
+            tool_input: { file_path: f, old_string: '  return o;', new_string: '  return { ...o };' },
+        });
+        assert(unrelated.status === 0, `legacy nested-if must not block; got ${unrelated.status}: ${unrelated.stderr}`);
+
+        const ignored = run('pattern-smell-gate.js', {
+            tool_name: 'Edit',
+            tool_input: { ...nested, new_string: '  if (o) {\n    // pattern-smell: ignore nested-if\n    if (o.x) { return 1; }\n  }\n  return o;' },
+        });
+        assert(ignored.status === 0, `ignore directive must allow; got ${ignored.status}: ${ignored.stderr}`);
+
+        const dry = run('pattern-smell-gate.js', { tool_name: 'Edit', tool_input: nested }, { HOOKS_DRY_RUN: '1' });
+        assert(dry.status === 0 && dry.stderr.includes('DRY-RUN'), `dry-run must allow; got ${dry.status}`);
+    });
+});
+
+check('smell gate: Write to an existing file only judges changed lines', () => {
+    withConfig({ smells: { severity: { 'nested-if': 'block' } } }, () => {
+        const f = writeFile('src/gate2.ts', LEGACY);
+        const r = run('pattern-smell-gate.js', {
+            tool_name: 'Write',
+            tool_input: { file_path: f, content: LEGACY.replace('return o;', 'return { ...o };') },
+        });
+        assert(r.status === 0, `legacy smell must not block a Write; got ${r.status}: ${r.stderr}`);
+    });
+});
+
+check('smell log records reported and suppressed findings', () => {
+    const logPath = path.join(SANDBOX, '.claude', 'pattern-smell-log.jsonl');
+    fs.rmSync(logPath, { force: true });
+    smells('src/logged.ts', `
+export function a(o: any) {
+  if (o.a) {
+    // pattern-smell: ignore nested-if
+    if (o.b) { go(); }
+  }
+}
+export function b(o: any) {
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+}
+`);
+    const entries = fs.readFileSync(logPath, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    const nested = entries.filter(e => e.smellId === 'nested-if');
+    assert(nested.some(e => e.suppressed) && nested.some(e => !e.suppressed), `expected one suppressed + one reported; got ${JSON.stringify(nested)}`);
+});
+
+check('class-level smell reported when an edit touches any method of the class', () => {
+    const body = `export class Big {
+  a() {}
+  b() {}
+  c() {}
+  d() {}
+  e() {}
+  f() {}
+  g() {}
+  h() { return 1; }
+}
+`;
+    const err = smells('src/big.ts', body, { old_string: 'h() {}', new_string: 'h() { return 1; }' });
+    assert(err.includes('large class Big'), `expected god-class via span; got: ${err}`);
+});
+
+check('function smells: long params, boolean flag, swallowed error (Python)', () => {
+    const err = smells('src/fn_smells.py', `
+def build(a, b, c, d, e):
+    return a
+
+def render(items, compact: bool = False):
+    try:
+        return items
+    except ValueError:
+        pass
+`);
+    assert(err.includes('takes 5 parameters'), `expected long-param-list; got: ${err}`);
+    assert(err.includes('boolean flag parameter'), `expected boolean-flag-param; got: ${err}`);
+    assert(err.includes('swallowed error'), `expected swallowed-exception; got: ${err}`);
+});
+
 check('non-ts file is ignored', () => {
     const f = writeFile('src/x.txt', 'whatever');
     const r = run('pattern-smell-detector.js', {
@@ -433,6 +693,24 @@ check('runs without error on Write payload', () => {
         },
     });
     assert(r.status === 0, `exit 0; got ${r.status}, stderr=${r.stderr}`);
+});
+
+check('lists same-language snake_case siblings, skips tests and other languages', () => {
+    writeFile('src/pay/base.py', 'class BaseAdapter:\n    pass\n');
+    writeFile('src/pay/stripe_adapter.py', 'class StripeAdapter(BaseAdapter):\n    pass\n');
+    writeFile('src/pay/test_stripe_adapter.py', 'x = 1\n');
+    writeFile('src/pay/other_adapter.ts', 'export class OtherAdapter {}\n');
+    const r = run('pattern-context-prep.js', {
+        session_id: 'smoke',
+        tool_name: 'Write',
+        tool_input: {
+            file_path: path.join(SANDBOX, 'src/pay/paypal_adapter.py'),
+            content: 'class PaypalAdapter(BaseAdapter):\n    def pay(self):\n        pass\n',
+        },
+    });
+    assert(r.stderr.includes('stripe_adapter.py'), `expected snake_case sibling; got: ${r.stderr}`);
+    assert(!r.stderr.includes('test_stripe_adapter.py'), `test file must be excluded; got: ${r.stderr}`);
+    assert(!r.stderr.includes('other_adapter.ts'), `other-language file must be excluded; got: ${r.stderr}`);
 });
 
 // ------------------------------------------------------------------

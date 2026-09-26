@@ -35,6 +35,21 @@ handler decides either to process the request or to pass it to the next handler.
 - All handlers always run regardless of result → use a flat list and `forEach`
 - The chain is fixed at compile time and never reordered → just hardcode the call sequence
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an array of handler functions, first non-`undefined` result wins; Express-style middleware |
+| Python | a list of callables; first non-`None` result wins |
+| Java | a `List<Handler>` streamed to the first present `Optional`; servlet filters |
+| C# | the ASP.NET middleware pipeline, or a list of `Func<>` |
+| Go | a slice of funcs, or chained `http.Handler` middleware |
+| C++ | a `vector<std::function>` walked until one handles it |
+| Rust | `handlers.iter().find_map(|h| h(&req))` |
+
 ## TypeScript Example
 
 ```typescript

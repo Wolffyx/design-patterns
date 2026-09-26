@@ -18,6 +18,15 @@ jobs:
       - name: Run hook test matrix
         run: npm test
 
+      - name: Tests on the tree-sitter backend (golden, cross-file, dogfood)
+        env:
+          DESIGN_PATTERNS_PARSERS_DIR: ${{ github.workspace }}/.parsers
+        run: |
+          node scripts/install-parsers.js --dir "$DESIGN_PATTERNS_PARSERS_DIR"
+          npm run test:golden:ast
+          node hooks/__tests__/crossfile.js --parser tree-sitter
+          node hooks/__tests__/dogfood.js --parser tree-sitter
+
       - name: Verify dist/skill-bundle.md is up to date
         run: |
           npm run bundle

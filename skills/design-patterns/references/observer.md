@@ -39,6 +39,21 @@ any events that happen to the object they're observing.
 - Only one consumer needs the event → just call the consumer directly
 - Static, compile-time known dependencies → wire them directly
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | `EventTarget` / an emitter, an array of callbacks, or signals |
+| Python | a list of callbacks, or a signals library |
+| Java | `PropertyChangeSupport`, `java.util.concurrent.Flow` |
+| C# | built-in `event` delegates, `IObservable<T>` |
+| Go | channels, or a slice of funcs |
+| C++ | a `vector<std::function>` |
+| Rust | channels (`broadcast`), or `Vec<Box<dyn Fn(&E)>>` |
+
 ## TypeScript Example
 
 ```typescript

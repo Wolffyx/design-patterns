@@ -223,14 +223,7 @@ function commentTokens(langId) {
  * so a mixed-language repo skips the right files without per-language config.
  */
 function allExcludeGlobs() {
-    const seen = new Set();
-    const out = [];
-    for (const lang of Object.values(LANGUAGES)) {
-        for (const g of lang.excludeGlobs) {
-            if (!seen.has(g)) { seen.add(g); out.push(g); }
-        }
-    }
-    return out;
+    return Array.from(new Set(Object.values(LANGUAGES).flatMap(lang => lang.excludeGlobs)));
 }
 
 /** Fresh symbol-name regex for a langId (new object each call — g-flag safe). */

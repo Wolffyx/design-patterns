@@ -62,7 +62,7 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "siblingNameRegex": { "type": "string" },
+        "siblingNameRegex": { "type": "string", "description": "Regex for sibling file names worth listing. Refused (built-in default used) when invalid, over 500 characters or backtracking-prone, e.g. (a+)+." },
         "maxSiblings": { "type": "integer", "minimum": 0 },
         "recentDecisionCount": { "type": "integer", "minimum": 0 },
         "timeBudgetMs": { "type": "integer", "minimum": 0 },
@@ -87,7 +87,7 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "path": { "type": "string" },
+        "path": { "type": "string", "description": "Must resolve inside <project>/.claude/ or ~/.claude/cache/ after symlinks are followed; otherwise the cache is skipped." },
         "alreadyInFamilyDays": { "type": "integer", "minimum": 0 }
       }
     },
@@ -107,8 +107,9 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "path": { "type": "string" },
-        "blockStatsPath": { "type": "string" }
+        "path": { "type": "string", "description": "Decision log (JSONL). Must resolve inside <project>/.claude/ after symlinks are followed; otherwise it is skipped." },
+        "blockStatsPath": { "type": "string", "description": "Block statistics (JSONL). Must resolve inside <project>/.claude/ after symlinks are followed; otherwise it is skipped." },
+        "smellLogPath": { "type": "string", "description": "JSONL of reported + suppressed smells; analyze-log.js turns it into tuning hints. Must resolve inside <project>/.claude/ after symlinks are followed; otherwise it is skipped." }
       }
     },
     "smells": {
@@ -120,6 +121,51 @@
         "repeatedNewMinOccurrences": { "type": "integer", "minimum": 2 },
         "constructorMaxParams": { "type": "integer", "minimum": 1 },
         "godClassMinPublicMethods": { "type": "integer", "minimum": 1 },
+        "maxNestingDepth": { "type": "integer", "minimum": 0, "description": "Max control-flow nesting (if/loop/switch/try) inside a block; deeper → deep-nesting. 0 disables." },
+        "nestedIf": { "type": "boolean", "description": "Flag an `if` directly inside another `if`/`else` block." },
+        "elseAfterReturn": { "type": "boolean", "description": "Flag `else`/`elif` after a branch ending in return/throw/raise/continue/break." },
+        "conditionalLadderMinBranches": { "type": "integer", "minimum": 0, "description": "if/else-if chain on one subject with ≥ N literal branches → dispatch map. 0 disables." },
+        "scatteredDiscriminatorMinSites": { "type": "integer", "minimum": 0, "description": "Same subject compared to string/enum literals at ≥ N sites → State/Strategy. 0 disables." },
+        "parser": { "type": "string", "enum": ["auto", "tree-sitter", "regex"], "description": "Scanning backend. 'auto' (default) uses tree-sitter when installed (node scripts/install-parsers.js), else regex. The parser directory comes from DESIGN_PATTERNS_PARSERS_DIR or ~/.claude/design-patterns/parsers, never from this file." },
+        "scope": { "type": "string", "enum": ["edited", "file"], "description": "'edited' (default) reports smells only on lines an Edit/MultiEdit wrote, or in the class/function it touched; 'file' reports the whole file. A Write always reports the whole file." },
+        "controlFlowScope": { "type": "string", "enum": ["edited", "file"], "description": "Deprecated alias of `scope`." },
+        "severity": {
+          "type": "object",
+          "description": "Per smell id (or '*'): 'off' hides it, 'advise' (default) reports after the write, 'block' makes pattern-smell-gate.js reject the write.",
+          "additionalProperties": { "type": "string", "enum": ["off", "advise", "block"] }
+        },
+        "maxFunctionLines": { "type": "integer", "minimum": 0, "description": "Non-blank body lines above which a function is long-function. 0 disables." },
+        "maxParams": { "type": "integer", "minimum": 0, "description": "Parameters above which a (non-constructor) function is long-param-list. 0 disables." },
+        "booleanFlagParam": { "type": "boolean", "description": "Flag bool parameters that switch behavior (setters exempt)." },
+        "maxComplexity": { "type": "integer", "minimum": 0, "description": "Cyclomatic complexity above which a function is flagged. 0 disables." },
+        "swallowedException": { "type": "boolean", "description": "Flag empty catch / except: pass / if err != nil {} / Err(_) => {} (a comment inside marks it intentional)." },
+        "nPlusOne": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "minConfidence": { "type": "string", "enum": ["high", "medium", "low"], "description": "high: known ORM/driver/HTTP APIs only; medium (default): + data-access receivers, local I/O helpers, lazy loads, resolvers." },
+            "flagAwaitInLoop": { "type": "boolean", "description": "Report sequential `await` in loops as the separate await-in-loop smell." },
+            "includeWhileLoops": { "type": "boolean", "description": "Also check while/do/loop bodies (off: those are usually pagination, polling or retry)." },
+            "smallLoopMax": { "type": "integer", "minimum": 0, "description": "Loops over literal collections or literal ranges up to this bound are skipped." },
+            "followLocalFunctions": { "type": "boolean", "description": "Treat calls to same-file functions that do I/O as I/O." },
+            "lazyLoad": { "type": "boolean", "description": "Flag relation reads on ORM rows fetched without eager loading (Python / Java / C# / TypeORM)." },
+            "resolvers": { "type": "boolean", "description": "Flag GraphQL field resolvers that query once per parent (unless a DataLoader is present)." },
+            "extraCallPatterns": { "type": "array", "items": { "type": "string" }, "description": "Extra regex sources for project-specific I/O calls (high confidence). Each is dropped when invalid, over 500 characters or backtracking-prone." },
+            "dataAccessReceivers": { "type": "string", "description": "Regex source replacing the default data-access receiver names (repo, client, api, db, …). Refused (built-in default used) when invalid, over 500 characters or backtracking-prone, e.g. (a+)+." },
+            "crossFile": {
+              "type": "object",
+              "description": "Follow imported functions, namespaces and injected services into other files to find I/O behind them.",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "maxDepth": { "type": "integer", "minimum": 1, "description": "Files deep to follow (edited → service → repository = 2)." },
+                "timeBudgetMs": { "type": "integer", "minimum": 0, "description": "Stop resolving after this long; findings so far still count." },
+                "cachePath": { "type": "string", "description": "Per-file I/O index cache, invalidated by file / dependency mtimes. Must resolve inside <project>/.claude/ after symlinks are followed; otherwise it is skipped." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
         "boundaryViolationPaths": {
           "type": "object",
           "properties": {
@@ -143,7 +189,7 @@
           "properties": {
             "enabled": { "type": "boolean" },
             "cacheTtlDays": { "type": "integer", "minimum": 1 },
-            "cachePath": { "type": "string" }
+            "cachePath": { "type": "string", "description": "Must resolve inside <project>/.claude/ after symlinks are followed; otherwise it is skipped." }
           }
         }
       }

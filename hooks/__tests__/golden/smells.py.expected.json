@@ -1,0 +1,74 @@
+[
+  {
+    "smellId": "singleton",
+    "line": 5
+  },
+  {
+    "smellId": "template-method",
+    "line": 14
+  },
+  {
+    "smellId": "long-constructor",
+    "line": 26
+  },
+  {
+    "smellId": "instanceof-chain",
+    "line": 31
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 33
+  },
+  {
+    "smellId": "nested-if",
+    "line": 42
+  },
+  {
+    "smellId": "deep-nesting",
+    "line": 43
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 47
+  },
+  {
+    "smellId": "conditional-ladder",
+    "line": 52
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 54
+  },
+  {
+    "smellId": "boolean-flag-param",
+    "line": 61
+  },
+  {
+    "smellId": "long-param-list",
+    "line": 65
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 72
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 74
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 77
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 79
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 82
+  },
+  {
+    "smellId": "god-class",
+    "line": 86
+  }
+]

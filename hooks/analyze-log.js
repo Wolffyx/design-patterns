@@ -2,8 +2,9 @@
 /**
  * Decision-log analyzer.
  *
- * Aggregates `.claude/pattern-decision-log.jsonl` and
- * `.claude/pattern-block-stats.jsonl` from the current working directory.
+ * Aggregates `.claude/pattern-decision-log.jsonl`,
+ * `.claude/pattern-block-stats.jsonl` and `.claude/pattern-smell-log.jsonl`
+ * from the current working directory.
  *
  * Usage:
  *   node hooks/analyze-log.js [--since 7d|30d|all] [--format text|json]
@@ -14,6 +15,8 @@
  *   Top patterns by file path glob (apps/* / packages/* / src/*)
  *   Block-rate per day (last 30d, sparkline)
  *   Friction hotspots (same file blocked >3× in a week)
+ *   Smell tuning (per smell: reported vs suppressed; a smell suppressed in
+ *   ≥30% of ≥5 sightings gets a "raise <config key> or set severity off" hint)
  *
  * No external deps. Pure stdlib.
  */
@@ -52,6 +55,8 @@ const cwd = process.cwd();
 const decisions = readJsonl(path.join(cwd, '.claude', 'pattern-decision-log.jsonl'))
     .filter(e => e.ts && Date.parse(e.ts) >= SINCE);
 const blocks = readJsonl(path.join(cwd, '.claude', 'pattern-block-stats.jsonl'))
+    .filter(e => e.ts && Date.parse(e.ts) >= SINCE);
+const smellLog = readJsonl(path.join(cwd, '.claude', 'pattern-smell-log.jsonl'))
     .filter(e => e.ts && Date.parse(e.ts) >= SINCE);
 
 // --- decision counts ------------------------------------------------------
@@ -138,6 +143,56 @@ const hotspots = Object.entries(fileBlocks)
     .filter(([, n]) => n > 3)
     .sort(([, a], [, b]) => b - a);
 
+// --- smell tuning -----------------------------------------------------------
+
+// the config knob that makes each smell fire less often
+const SMELL_KNOB = {
+    'switch-on-type': 'smells.switchOnTypeMinCases',
+    'instanceof-chain': 'smells.instanceofChainMinBranches',
+    'repeated-new': 'smells.repeatedNewMinOccurrences',
+    'long-constructor': 'smells.constructorMaxParams',
+    'god-class': 'smells.godClassMinPublicMethods',
+    'deep-nesting': 'smells.maxNestingDepth',
+    'nested-if': 'smells.nestedIf',
+    'else-after-return': 'smells.elseAfterReturn',
+    'conditional-ladder': 'smells.conditionalLadderMinBranches',
+    'scattered-discriminator': 'smells.scatteredDiscriminatorMinSites',
+    'long-function': 'smells.maxFunctionLines',
+    'long-param-list': 'smells.maxParams',
+    'boolean-flag-param': 'smells.booleanFlagParam',
+    'complexity': 'smells.maxComplexity',
+    'swallowed-exception': 'smells.swallowedException',
+    'n-plus-one': 'smells.nPlusOne.minConfidence (→ "high") or nPlusOne.dataAccessReceivers',
+    'await-in-loop': 'smells.nPlusOne.flagAwaitInLoop',
+};
+const SUPPRESS_RATE_HINT = 0.3;
+const SUPPRESS_MIN_SIGHTINGS = 5;
+
+const smellStats = {};
+for (const e of smellLog) {
+    const k = e.smellId || '?';
+    const st = smellStats[k] || (smellStats[k] = { smellId: k, reported: 0, suppressed: 0, blocked: 0 });
+    if (e.suppressed) st.suppressed++;
+    else st.reported++;
+    if (e.severity === 'block') st.blocked++;
+}
+for (const b of blocks) {
+    if (b.rule !== 'smell-gate' || !Array.isArray(b.smells)) continue;
+    for (const id of b.smells.map(x => String(x).split(':')[0])) {
+        const st = smellStats[id] || (smellStats[id] = { smellId: id, reported: 0, suppressed: 0, blocked: 0 });
+        st.blocked++;
+    }
+}
+const smellRows = Object.values(smellStats).map(st => {
+    const total = st.reported + st.suppressed;
+    const rate = total ? st.suppressed / total : 0;
+    const suggestion = total >= SUPPRESS_MIN_SIGHTINGS && rate >= SUPPRESS_RATE_HINT
+        ? `suppressed ${Math.round(rate * 100)}% of the time \u2014 loosen ${SMELL_KNOB[st.smellId] || 'its threshold'} ` +
+          `or set smells.severity["${st.smellId}"] = "off"`
+        : null;
+    return { ...st, suppressionRate: Number(rate.toFixed(2)), suggestion };
+}).sort((a, b) => (b.reported + b.suppressed) - (a.reported + a.suppressed));
+
 // --- output ---------------------------------------------------------------
 
 if (FORMAT === 'json') {
@@ -148,6 +203,7 @@ if (FORMAT === 'json') {
         bucketPatterns,
         blockSeries,
         hotspots: hotspots.map(([file, count]) => ({ file, count })),
+        smells: smellRows,
     }, null, 2) + '\n');
     process.exit(0);
 }
@@ -174,4 +230,11 @@ out.push('');
 out.push('Friction hotspots (>3 blocks in last 7d):');
 if (hotspots.length === 0) out.push('  (none)');
 else for (const [f, n] of hotspots) out.push(`  ${String(n).padStart(4)} × ${f}`);
+out.push('');
+out.push('Smell tuning (reported / suppressed / blocked):');
+if (smellRows.length === 0) out.push('  (no smell log yet)');
+for (const r of smellRows) {
+    out.push(`  ${r.smellId.padEnd(24)} ${String(r.reported).padStart(5)} ${String(r.suppressed).padStart(5)} ${String(r.blocked).padStart(5)}`);
+    if (r.suggestion) out.push(`    \u2192 ${r.suggestion}`);
+}
 process.stdout.write(out.join('\n') + '\n');

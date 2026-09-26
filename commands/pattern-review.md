@@ -6,7 +6,7 @@ Run a project-wide design-pattern review.
 
 First resolve the hooks directory: if the environment variable
 `CLAUDE_PLUGIN_ROOT` is set, use `HOOKS="$CLAUDE_PLUGIN_ROOT/hooks"`; otherwise
-use `HOOKS="$HOME/.claude/hooks"` (the symlink-install location). Use `$HOOKS`
+use `HOOKS="$HOME/.claude/design-patterns/hooks"` (the symlink-install location). Use `$HOOKS`
 in the commands below.
 
 1. Run `node "$HOOKS/analyze-log.js" --format json --since 30d`
@@ -41,6 +41,12 @@ in the commands below.
    - **Observer** (file:line — class with N pub/sub verbs)
    - **Command** (file:line — class)
    - **Template Method** (file:line — class)
+   - **Nested if / deep nesting / else after return** (file:line — message)
+   - **Conditional ladder / scattered discriminator** (file:line — subject, count)
+   - **Long function / long parameter list / boolean flag / complexity** (file:line — function)
+   - **Swallowed errors** (file:line — construct)
+   - **N+1 queries** (file:line — call, kind: per-item / loop-invariant / N writes / lazy load / resolver)
+   - **Sequential awaits in loops** (file:line)
    - **Cross-file duplicates** (signature — list of files)
    - **Decision-log trends** (counts by decision, top reject reasons,
      friction hotspots from the analyzer JSON)

@@ -27,24 +27,27 @@ const pkgVersion = (() => {
 function read(p) { return fs.readFileSync(p, 'utf8'); }
 
 function stripFrontmatter(md) {
-    if (md.startsWith('---')) {
-        const end = md.indexOf('\n---', 3);
-        if (end !== -1) return md.slice(end + 4).replace(/^\n+/, '');
-    }
-    return md;
+    const end = md.startsWith('---') ? md.indexOf('\n---', 3) : -1;
+    return end === -1 ? md : md.slice(end + 4).replace(/^\n+/, '');
 }
 
-function rewriteRefLinks(md) {
-    // strip "references/<slug>.md" links — every reference is now inline below
-    return md.replace(/\(references\/([\w-]+)\.md[^)]*\)/g, '(see "$1" section below)');
+function rewriteRefLinks(md, slugs) {
+    // "references/<slug>.md" (from SKILL.md) and bare "<slug>.md" (between
+    // references) — every reference is inline below, so point at its anchor
+    return md.replace(/\((?:references\/)?([\w-]+)\.md[^)]*\)/g,
+        (whole, slug) => (slugs.has(slug) ? `(#${slug})` : whole));
 }
 
-const skillRaw = read(path.join(SKILL_DIR, 'SKILL.md'));
-const skill = rewriteRefLinks(stripFrontmatter(skillRaw));
+// hook-protocol.md documents Claude Code hook output only — no use to other agents
+const HOOK_ONLY = new Set(['hook-protocol.md']);
 
 const refFiles = fs.readdirSync(REFS_DIR)
-    .filter(f => f.endsWith('.md') && !f.startsWith('_'))
+    .filter(f => f.endsWith('.md') && !f.startsWith('_') && !HOOK_ONLY.has(f))
     .sort();
+const slugs = new Set(refFiles.map(f => f.replace(/\.md$/, '')));
+
+const skillRaw = read(path.join(SKILL_DIR, 'SKILL.md'));
+const skill = rewriteRefLinks(stripFrontmatter(skillRaw), slugs);
 
 const parts = [];
 parts.push(`# Design Patterns — Bundled Catalog`);
@@ -60,7 +63,7 @@ parts.push('');
 
 for (const file of refFiles) {
     const slug = file.replace(/\.md$/, '');
-    const content = stripFrontmatter(read(path.join(REFS_DIR, file)));
+    const content = rewriteRefLinks(stripFrontmatter(read(path.join(REFS_DIR, file))), slugs);
     parts.push('---');
     parts.push('');
     parts.push(`<a id="${slug}"></a>`);

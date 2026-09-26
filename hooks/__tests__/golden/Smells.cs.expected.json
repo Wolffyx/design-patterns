@@ -1,0 +1,34 @@
+[
+  {
+    "smellId": "singleton",
+    "line": 4
+  },
+  {
+    "smellId": "instanceof-chain",
+    "line": 11
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 15
+  },
+  {
+    "smellId": "nested-if",
+    "line": 30
+  },
+  {
+    "smellId": "deep-nesting",
+    "line": 32
+  },
+  {
+    "smellId": "boolean-flag-param",
+    "line": 40
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 46
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 48
+  }
+]

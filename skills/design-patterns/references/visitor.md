@@ -38,6 +38,21 @@ enables adding new behaviors to object structures without modifying the classes 
 - Element classes change frequently → Visitor maintenance becomes painful
 - A discriminated union with `switch` over `kind` field is clearer
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a discriminated union + exhaustive `switch` in plain functions |
+| Python | `functools.singledispatch`, or `match` with class patterns |
+| Java | sealed interface + pattern-matching `switch` (Java 21) — replaces Visitor |
+| C# | a switch expression with type patterns |
+| Go | a type switch `switch v := n.(type)` |
+| C++ | `std::variant` + `std::visit` |
+| Rust | an enum + `match` — the idiomatic visitor |
+
 ## TypeScript Example
 
 ```typescript

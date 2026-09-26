@@ -38,6 +38,21 @@ common parts of state between multiple objects instead of keeping all of the dat
 - Objects are few (<10000) → savings won't justify complexity
 - The "shared" state changes frequently → flyweight breaks
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a `Map` cache of shared immutable objects |
+| Python | an `lru_cache`d factory, `sys.intern`, and `__slots__` |
+| Java | `valueOf`-style caches, `Map.computeIfAbsent` |
+| C# | `ConcurrentDictionary.GetOrAdd`, `string.Intern` |
+| Go | a map cache, or `unique.Make` (Go 1.23+) |
+| C++ | an `unordered_map` of `shared_ptr<const T>` |
+| Rust | an `Arc<T>` interner (`HashMap<K, Arc<T>>`) |
+
 ## TypeScript Example
 
 ```typescript

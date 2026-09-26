@@ -38,6 +38,21 @@ representation (list, stack, tree, etc.).
 - The collection is a simple array → just `.map()`/`.filter()`/`.forEach()`
 - You'd need an entire iterator class for one consumer → inline the loop
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a generator function `function*` / `[Symbol.iterator]` |
+| Python | a generator with `yield` |
+| Java | `Iterable` + streams |
+| C# | `yield return` / `IEnumerable<T>` |
+| Go | range-over-func iterators `iter.Seq[T]` (Go 1.23+) |
+| C++ | `begin`/`end` + range-for; C++20 ranges, C++23 `std::generator` |
+| Rust | `impl Iterator`, `std::iter::from_fn` |
+
 ## TypeScript Example
 
 ```typescript

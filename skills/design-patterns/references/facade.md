@@ -37,6 +37,21 @@ complex set of classes.
 - The facade would just re-export everything → that's a barrel file, not a facade
 - You'd be creating a facade with one method that calls one underlying method → premature
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a module exporting a few top-level functions |
+| Python | a module with a small set of public functions (`__all__`) |
+| Java | one service class with a deliberately small public surface |
+| C# | one service class with a deliberately small public surface |
+| Go | the package's exported API — keep internals unexported |
+| C++ | a header exposing a few free functions; internals in a detail namespace |
+| Rust | a module with a few `pub fn`s; internals stay private, re-export with `pub use` |
+
 ## TypeScript Example
 
 ```typescript

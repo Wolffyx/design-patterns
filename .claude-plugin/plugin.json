@@ -1,6 +1,6 @@
 {
   "name": "design-patterns",
-  "description": "Always-on Gang of Four design-pattern catalog (22 patterns, refactoring.guru) plus Pattern Check (Rule 0) hook enforcement on every source edit (TypeScript, Python, Java, C#, Go, C++, Rust).",
+  "description": "Always-on software-design skill: control-flow rules (no nested ifs, N+1 branches, N+1 queries), Tier 0 language-native forms and the Gang of Four catalog (22 patterns, refactoring.guru), plus Pattern Check (Rule 0) hook enforcement on every source edit (TypeScript, Python, Java, C#, Go, C++, Rust).",
   "author": {
     "name": "wolffyx",
     "url": "https://github.com/wolffyx"
@@ -41,6 +41,11 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/check-pattern-preamble.js\"",
+            "timeout": 8
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pattern-smell-gate.js\"",
             "timeout": 8
           }
         ]

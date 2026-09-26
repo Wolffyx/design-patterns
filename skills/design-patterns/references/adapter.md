@@ -37,6 +37,21 @@ functions as a translator between incompatible components, enabling them to work
 - The "adaptation" is a one-line wrapper → inline it
 - The codebase already has an adapter for this backend → extend or compose with the existing one
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a function mapping one shape to the other, or an object literal that satisfies the interface |
+| Python | a small function or wrapper — duck typing often needs no adapter at all |
+| Java | a lambda when the target is a functional interface |
+| C# | an extension method, or a lambda converted to the target delegate |
+| Go | a func-type adapter (like `http.HandlerFunc`); implicit interfaces often need nothing |
+| C++ | a lambda or `std::function`; a template adapter for static dispatch |
+| Rust | a newtype `struct W(T)` with `impl Trait for W`, or `From` / `Into` |
+
 ## TypeScript Example
 
 ```typescript

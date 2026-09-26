@@ -1,0 +1,51 @@
+{
+  "ts": {
+    "entry": "src/report.ts",
+    "findings": [
+      "10 src/user-store.ts:3",
+      "13 src/profiles.ts:1",
+      "16 src/profiles.ts:1"
+    ]
+  },
+  "py": {
+    "entry": "app/report.py",
+    "findings": [
+      "12 app/store.py:5",
+      "14 app/helpers.py:4",
+      "16 app/helpers.py:4"
+    ]
+  },
+  "go": {
+    "entry": "report/report.go",
+    "findings": [
+      "15 users/store.go:5",
+      "18 users/store.go:9",
+      "21 report/helpers.go:3"
+    ]
+  },
+  "java": {
+    "entry": "src/main/java/com/shop/report/ReportService.java",
+    "findings": [
+      "11 src/main/java/com/shop/UserService.java:6"
+    ]
+  },
+  "cs": {
+    "entry": "Reports/ReportService.cs",
+    "findings": [
+      "9 Services/UserService.cs:5"
+    ]
+  },
+  "rust": {
+    "entry": "src/report.rs",
+    "findings": [
+      "6 src/users.rs:1",
+      "9 src/users.rs:1"
+    ]
+  },
+  "cpp": {
+    "entry": "report.cpp",
+    "findings": [
+      "6 users.cpp:3"
+    ]
+  }
+}

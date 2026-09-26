@@ -4,7 +4,7 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/session-start-reminder.js\"" }
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/session-start-reminder.js\"" }
         ]
       }
     ],
@@ -12,7 +12,7 @@
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/user-prompt-reminder.js\"" }
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/user-prompt-reminder.js\"" }
         ]
       }
     ],
@@ -20,8 +20,9 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/pattern-context-prep.js\"" },
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/check-pattern-preamble.js\"" }
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/pattern-context-prep.js\"" },
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/check-pattern-preamble.js\"" },
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/pattern-smell-gate.js\"" }
         ]
       }
     ],
@@ -29,8 +30,8 @@
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/pattern-smell-detector.js\"" },
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/log-pattern-decision.js\"" }
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/pattern-smell-detector.js\"" },
+          { "type": "command", "command": "node \"$HOME/.claude/design-patterns/hooks/log-pattern-decision.js\"" }
         ]
       }
     ]

@@ -42,6 +42,21 @@ global access point to this instance.
 - You only need it for convenient access from anywhere → that's a smell, refactor to pass dependencies explicitly
 - Tests need to swap implementations → Singleton makes mocking painful
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a module-level `export const x = create()` — ES modules are already singletons; still prefer passing it in |
+| Python | a module-level instance, or `functools.cache` on a factory function |
+| Java | a DI-container singleton scope; an `enum` singleton only when it must be truly global |
+| C# | `services.AddSingleton<T>()`, or `Lazy<T>` |
+| Go | a package-level var initialized with `sync.OnceValue` |
+| C++ | a function-local `static` (Meyers singleton) |
+| Rust | `static X: LazyLock<T>` / `OnceLock` — but passing `&T` / `Arc<T>` is usually better |
+
 ## TypeScript Example
 
 ```typescript

@@ -36,6 +36,21 @@ by restricting direct communication and forcing collaboration through a mediator
 - You'd be introducing a mediator with one method that calls one component → premature
 - Observer or event bus already does what you need → those are simpler
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | an event bus or a single coordinating function; a state store |
+| Python | one coordinating function, or an `asyncio.Queue` |
+| Java | application events from the DI framework |
+| C# | MediatR-style request handlers |
+| Go | channels + one coordinating goroutine |
+| C++ | a coordinator object that owns non-owning references to the peers |
+| Rust | an `mpsc` channel + one owner loop (fits ownership rules) |
+
 ## TypeScript Example
 
 ```typescript

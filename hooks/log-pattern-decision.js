@@ -2,7 +2,7 @@
 /**
  * PostToolUse hook: logs Pattern check decisions for later review.
  *
- * On each Write/Edit/MultiEdit of a .ts/.tsx source file, scans the most
+ * On each Write/Edit/MultiEdit of a supported source file, scans the most
  * recent assistant transcript turn for `Pattern check:` lines and appends
  * one JSONL entry per line to `.claude/pattern-decision-log.jsonl`.
  *
@@ -88,21 +88,38 @@ const toolInput = input.tool_input || {};
 const filePath = toolInput.file_path || '';
 if (!filePath) process.exit(0);
 
-const extOk = cfg.blocking.fileExtensions.some(ext =>
-    new RegExp('\\.' + ext + '$', 'i').test(filePath));
-if (!extOk) process.exit(0);
+if (!shared.hasExtension(filePath, cfg.blocking.fileExtensions)) process.exit(0);
 
 if (cfg.blocking.excludeGlobs.some(g => shared.matchesGlob(filePath, g))) process.exit(0);
 
 const preambles = shared.findAllPreamblesInRecentTurn(input.transcript_path);
 if (preambles.length === 0) process.exit(0);
 
-const logPath = path.resolve(process.cwd(), cfg.log.path);
-try { fs.mkdirSync(path.dirname(logPath), { recursive: true }); } catch {}
+// null when the configured path leaves <project>/.claude/ — then nothing is logged
+const logPath = shared.projectFile(cfg.log.path);
+if (!logPath) process.exit(0);
+try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+} catch {
+    // unwritable log dir: the append below fails silently too — logging never blocks
+}
 
 const now = new Date().toISOString();
 const session = input.session_id || '';
 const fileRel = filePath.replace(/\\/g, '/');
+
+const normalizePattern = x => String(x || '').toLowerCase().replace(/[^a-z]+/g, '');
+
+/** The open `<Current>→<Better>` suggestion on this file that `p` now fulfils, if any. */
+function resolvedSuggestion(p, logPath, filePath) {
+    if (p.decision !== 'applied' && p.decision !== 'extended') return null;
+    const open = findOpenRefactorSuggest(logPath, filePath);
+    const arrow = open ? parseArrowPattern(open.pattern) : null;
+    if (!arrow) return null;
+    const better = normalizePattern(arrow.better);
+    const applied = normalizePattern(p.pattern);
+    return better === applied || applied.includes(better) ? open : null;
+}
 
 const lines = [];
 for (const p of preambles) {
@@ -124,28 +141,19 @@ for (const p of preambles) {
     lines.push(JSON.stringify(record));
 
     // tombstone check: does this entry resolve an open refactor-suggest?
-    if (p.decision === 'applied' || p.decision === 'extended') {
-        const open = findOpenRefactorSuggest(logPath, filePath);
-        if (open) {
-            const arrow = parseArrowPattern(open.pattern);
-            if (arrow) {
-                const normalize = s => String(s || '').toLowerCase().replace(/[^a-z]+/g, '');
-                if (normalize(arrow.better) === normalize(p.pattern) ||
-                    normalize(p.pattern).includes(normalize(arrow.better))) {
-                    lines.push(JSON.stringify({
-                        id: shortId(),
-                        ts: now,
-                        session,
-                        file: fileRel,
-                        tool,
-                        linkedTo: open.id,
-                        status: 'resolved',
-                        resolvedBy: p.pattern,
-                        reason: 'refactor-suggest ' + open.id + ' resolved by ' + p.decision + ' ' + p.pattern,
-                    }));
-                }
-            }
-        }
+    const open = resolvedSuggestion(p, logPath, filePath);
+    if (open) {
+        lines.push(JSON.stringify({
+            id: shortId(),
+            ts: now,
+            session,
+            file: fileRel,
+            tool,
+            linkedTo: open.id,
+            status: 'resolved',
+            resolvedBy: p.pattern,
+            reason: 'refactor-suggest ' + open.id + ' resolved by ' + p.decision + ' ' + p.pattern,
+        }));
     }
 }
 

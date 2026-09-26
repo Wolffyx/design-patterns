@@ -36,6 +36,21 @@ as if the object changed its class.
 - States never share a common interface meaningfully → it's not really a state machine
 - A `useState` hook or store flag does the job → no class needed
 
+## Lighter idiomatic forms
+
+Try these before the full class structure below. Use the full pattern when the lighter form stops being enough
+(several methods per variant, state per instance, or many implementations maintained by different people).
+
+| Language | Lighter form |
+|---|---|
+| TypeScript | a discriminated union + exhaustive `switch` (`never` check); a state-machine library for complex flows |
+| Python | an `Enum` + dict of transition functions, or `match` |
+| Java | an enum with per-constant methods; sealed interface + pattern `switch` |
+| C# | an enum + switch expression; one record per state |
+| Go | state functions: `type stateFn func(*M) stateFn` |
+| C++ | `std::variant` + `std::visit` |
+| Rust | an enum + `match`; typestate (`Door<Open>`) for compile-time states |
+
 ## TypeScript Example
 
 ```typescript
