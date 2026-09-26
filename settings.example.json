@@ -21,7 +21,8 @@
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           { "type": "command", "command": "node \"$HOME/.claude/hooks/pattern-context-prep.js\"" },
-          { "type": "command", "command": "node \"$HOME/.claude/hooks/check-pattern-preamble.js\"" }
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/check-pattern-preamble.js\"" },
+          { "type": "command", "command": "node \"$HOME/.claude/hooks/pattern-smell-gate.js\"" }
         ]
       }
     ],

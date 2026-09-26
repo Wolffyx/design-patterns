@@ -35,6 +35,7 @@
 const fs = require('fs');
 const path = require('path');
 const shared = require('./_pattern-shared');
+const { importsOf } = require('./_code-scan');
 
 const DRY_RUN = process.env.HOOKS_DRY_RUN === '1';
 const T0 = Date.now();
@@ -158,14 +159,10 @@ function familyHealthDegraded(filePath, family, cfg) {
 
 // --- import detection ------------------------------------------------------
 
-function importsInPayload(newText) {
-    const out = [];
-    const re = /from\s+['"]([^'"]+)['"]/g;
-    let m;
-    while ((m = re.exec(newText || '')) !== null) {
-        const p = m[1];
-        if (/\b(base|registry|middleware|factory|pipeline)\b/i.test(p)) out.push(p);
-    }
+function importsInPayload(newText, langId) {
+    const out = importsOf(newText || '', langId || 'ts')
+        .map(i => i.spec)
+        .filter(p => /(?:^|[/._:])(base|registry|middleware|factory|pipeline)(?:$|[/._:])/i.test(p));
     return Array.from(new Set(out));
 }
 
@@ -180,9 +177,13 @@ function payloadImportsFamily(filePath, cfg, newText, existingFileText) {
         for (const must of f.mustRead) {
             const absMust = path.resolve(cwd, must).replace(/\\/g, '/');
             if (absMust === normalized) continue;
-            const fileNoExt = path.basename(must).replace(/\.(ts|tsx)$/, '');
-            const re = new RegExp('from\\s+[\\\'"][^\\\'"]*' + fileNoExt.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '[\\\'"]');
-            if (re.test(body)) return { family: f.family, via: must };
+            // module stem, matched against every import form of the file's language:
+            // `from './base'`, `from pkg.base import`, `use crate::base`, `"pkg/base"`
+            const stem = path.basename(must).replace(/\.[^.]+$/, '');
+            const langId = shared.langIdForFile(filePath) || 'ts';
+            const hit = importsOf(body, langId).some(i =>
+                i.spec.split(/[/.:]+/).filter(Boolean).pop() === stem);
+            if (hit) return { family: f.family, via: must };
         }
     }
     return null;
@@ -320,7 +321,7 @@ function main() {
     if (overBudget(cfg.contextPrep.timeBudgetMs)) process.exit(0);
     const siblings = listSiblings(filePath, cfg);
     const recents = recentDecisionsForFile(filePath, cfg);
-    const imports = importsInPayload(payload.newText);
+    const imports = importsInPayload(payload.newText, shared.langIdForFile(filePath));
     const degraded = familyMatch ? familyHealthDegraded(filePath, familyMatch, cfg) : false;
 
     const lines = [

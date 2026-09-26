@@ -1,12 +1,14 @@
 {
   "name": "design-patterns",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Control-flow rules, Tier 0 forms and the Gang of Four design-pattern catalog, plus Pattern Check (Rule 0) hook enforcement for Claude Code.",
   "license": "MIT",
   "engines": { "node": ">=18" },
   "scripts": {
-    "test": "node hooks/__tests__/smoke.js && node hooks/__tests__/run-matrix.js",
+    "test": "node hooks/__tests__/smoke.js && node hooks/__tests__/golden.js && node hooks/__tests__/run-matrix.js",
     "test:smoke": "node hooks/__tests__/smoke.js",
+    "test:golden": "node hooks/__tests__/golden.js",
+    "test:golden:update": "node hooks/__tests__/golden.js --update",
     "test:matrix": "node hooks/__tests__/run-matrix.js",
     "analyze": "node hooks/analyze-log.js",
     "bundle": "node scripts/bundle.js",
@@ -25,7 +27,9 @@
     "settings.example.json",
     "pattern-check.config.example.json",
     "pattern-check.schema.json",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "evals"
   ],
   "repository": {
     "type": "git",

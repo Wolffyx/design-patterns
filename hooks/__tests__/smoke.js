@@ -471,14 +471,14 @@ export async function f(ids: string[], cmds: any[]) {
   cmds.forEach(c => c.execute());
 }
 `);
-    assert(ts.includes('`.findById(` inside loop'), `expected findById; got: ${ts}`);
-    assert(ts.includes('`.query(` inside loop'), `expected query in forEach; got: ${ts}`);
+    assert(ts.includes('`.findById(` once per'), `expected findById; got: ${ts}`);
+    assert(ts.includes('`.query(` once per'), `expected query in forEach; got: ${ts}`);
     assert(!ts.includes('execute'), `Command.execute() must not flag; got: ${ts}`);
     const py = smells('src/cf_n1.py', `
 def f(urls):
     return [requests.get(u) for u in urls]
 `);
-    assert(py.includes('`requests.get(` inside loop'), `expected comprehension N+1; got: ${py}`);
+    assert(py.includes('`requests.get(` once per'), `expected comprehension N+1; got: ${py}`);
 });
 
 check('switch-on-type skips switch marked exhaustive', () => {
@@ -509,6 +509,124 @@ export function f(o: any) {
     assert(!err.includes('nested in'), `untouched nested-if must not flag on Edit; got: ${err}`);
     const err2 = smells('src/cf-scope.ts', body, { old_string: 'x', new_string: '    if (o.b) { go(); }' });
     assert(err2.includes('nested in'), `edited nested-if must flag; got: ${err2}`);
+});
+
+// --- smell gate (PreToolUse) + smell log + span scoping -------------------
+
+function withConfig(config, fn) {
+    const p = path.join(SANDBOX, '.claude', 'pattern-check.config.json');
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(config), 'utf8');
+    try { fn(); } finally { fs.rmSync(p, { force: true }); }
+}
+
+const LEGACY = `
+export function legacy(o: any) {
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+}
+export function fresh(o: any) {
+  return o;
+}
+`;
+
+check('smell gate: no block severity configured → allow', () => {
+    const f = writeFile('src/gate0.ts', LEGACY);
+    const r = run('pattern-smell-gate.js', {
+        tool_name: 'Edit',
+        tool_input: { file_path: f, old_string: '  return o;', new_string: '  if (o) {\n    if (o.x) { return 1; }\n  }\n  return o;' },
+    });
+    assert(r.status === 0, `expected allow; got ${r.status}: ${r.stderr}`);
+});
+
+check('smell gate: blocks a new nested-if, ignores legacy ones, honours ignore + dry-run', () => {
+    withConfig({ smells: { severity: { 'nested-if': 'block' } } }, () => {
+        const f = writeFile('src/gate1.ts', LEGACY);
+        const nested = { file_path: f, old_string: '  return o;', new_string: '  if (o) {\n    if (o.x) { return 1; }\n  }\n  return o;' };
+        const r = run('pattern-smell-gate.js', { tool_name: 'Edit', tool_input: nested });
+        assert(r.status === 2, `expected block; got ${r.status}: ${r.stderr}`);
+        assert(r.stderr.includes('BLOCKED by smell gate') && r.stderr.includes('nested in'), `block message; got: ${r.stderr}`);
+
+        const unrelated = run('pattern-smell-gate.js', {
+            tool_name: 'Edit',
+            tool_input: { file_path: f, old_string: '  return o;', new_string: '  return { ...o };' },
+        });
+        assert(unrelated.status === 0, `legacy nested-if must not block; got ${unrelated.status}: ${unrelated.stderr}`);
+
+        const ignored = run('pattern-smell-gate.js', {
+            tool_name: 'Edit',
+            tool_input: { ...nested, new_string: '  if (o) {\n    // pattern-smell: ignore nested-if\n    if (o.x) { return 1; }\n  }\n  return o;' },
+        });
+        assert(ignored.status === 0, `ignore directive must allow; got ${ignored.status}: ${ignored.stderr}`);
+
+        const dry = run('pattern-smell-gate.js', { tool_name: 'Edit', tool_input: nested }, { HOOKS_DRY_RUN: '1' });
+        assert(dry.status === 0 && dry.stderr.includes('DRY-RUN'), `dry-run must allow; got ${dry.status}`);
+    });
+});
+
+check('smell gate: Write to an existing file only judges changed lines', () => {
+    withConfig({ smells: { severity: { 'nested-if': 'block' } } }, () => {
+        const f = writeFile('src/gate2.ts', LEGACY);
+        const r = run('pattern-smell-gate.js', {
+            tool_name: 'Write',
+            tool_input: { file_path: f, content: LEGACY.replace('return o;', 'return { ...o };') },
+        });
+        assert(r.status === 0, `legacy smell must not block a Write; got ${r.status}: ${r.stderr}`);
+    });
+});
+
+check('smell log records reported and suppressed findings', () => {
+    const logPath = path.join(SANDBOX, '.claude', 'pattern-smell-log.jsonl');
+    fs.rmSync(logPath, { force: true });
+    smells('src/logged.ts', `
+export function a(o: any) {
+  if (o.a) {
+    // pattern-smell: ignore nested-if
+    if (o.b) { go(); }
+  }
+}
+export function b(o: any) {
+  if (o.a) {
+    if (o.b) { go(); }
+  }
+}
+`);
+    const entries = fs.readFileSync(logPath, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+    const nested = entries.filter(e => e.smellId === 'nested-if');
+    assert(nested.some(e => e.suppressed) && nested.some(e => !e.suppressed), `expected one suppressed + one reported; got ${JSON.stringify(nested)}`);
+});
+
+check('class-level smell reported when an edit touches any method of the class', () => {
+    const body = `export class Big {
+  a() {}
+  b() {}
+  c() {}
+  d() {}
+  e() {}
+  f() {}
+  g() {}
+  h() { return 1; }
+}
+`;
+    const err = smells('src/big.ts', body, { old_string: 'h() {}', new_string: 'h() { return 1; }' });
+    assert(err.includes('large class Big'), `expected god-class via span; got: ${err}`);
+});
+
+check('function smells: long params, boolean flag, swallowed error (Python)', () => {
+    const err = smells('src/fn_smells.py', `
+def build(a, b, c, d, e):
+    return a
+
+def render(items, compact: bool = False):
+    try:
+        return items
+    except ValueError:
+        pass
+`);
+    assert(err.includes('takes 5 parameters'), `expected long-param-list; got: ${err}`);
+    assert(err.includes('boolean flag parameter'), `expected boolean-flag-param; got: ${err}`);
+    assert(err.includes('swallowed error'), `expected swallowed-exception; got: ${err}`);
 });
 
 check('non-ts file is ignored', () => {

@@ -36,8 +36,13 @@ Required reads on first class/interface/refactor per session:
 - **N+1 branches:** a 3rd branch on the same key → dispatch map; branches
   with several operations or state → Strategy / State. The same discriminator
   checked at a 3rd site → centralize it.
-- **N+1 queries:** no DB / HTTP call per loop item → batch (`IN`), eager
-  load, DataLoader, or concurrent awaits.
+- **N+1 queries:** no DB / HTTP call per loop item → batch (`IN`) and map
+  lookup, hoist loop-invariant calls, eager-load relations, bulk writes,
+  DataLoader for resolvers. `Promise.all` over N calls is still N round-trips.
+
+**Functions and errors (`references/functions.md`):** ≤ ~50 lines, ≤ 4
+parameters, no boolean flag parameters, complexity ≤ 10, never swallow an
+error (handle, log with context, or rethrow).
 
 Tier 0 first (guard clause, dispatch map, null object, result type,
 repository, DI, language-native forms). Then Tier 1: Factory Method, Abstract
@@ -58,6 +63,8 @@ token — `//` for TS/Java/C#/Go/C++/Rust, `#` for Python):
 ### Enforcement (when this plugin is installed)
 
 - `PreToolUse  check-pattern-preamble.js`  — blocks on missing preamble
+- `PreToolUse  pattern-smell-gate.js`      — blocks smells set to `block` in
+                                            `smells.severity` (opt-in)
 - `PostToolUse pattern-smell-detector.js`  — non-blocking smell suggestions
 - `PostToolUse log-pattern-decision.js`    — appends decisions to
                                              `.claude/pattern-decision-log.jsonl`

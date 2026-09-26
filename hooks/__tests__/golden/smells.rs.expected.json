@@ -1,0 +1,30 @@
+[
+  {
+    "smellId": "singleton",
+    "line": 4
+  },
+  {
+    "smellId": "long-constructor",
+    "line": 11
+  },
+  {
+    "smellId": "nested-if",
+    "line": 16
+  },
+  {
+    "smellId": "deep-nesting",
+    "line": 17
+  },
+  {
+    "smellId": "boolean-flag-param",
+    "line": 24
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 28
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 32
+  }
+]

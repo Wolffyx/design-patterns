@@ -9,6 +9,8 @@ job is to be **the project's authoritative answer** to:
 - "Does this project already solve this with an existing pattern family?"
 - "If I write a new `*Factory` / `*Adapter` / `*Strategy`, what should it
   extend or plug into?"
+- "What are this project's conventions for dispatch maps, repositories and
+  errors, and where are the rules deliberately relaxed?"
 
 Without project-specific entries, the section below stays as a template.
 The hooks still work — they just can't suggest "extend X" hints.
@@ -53,6 +55,64 @@ The hooks still work — they just can't suggest "extend X" hints.
 - **Where:** `<src/path/events/...>`
 - **Implementation:** `<EventEmitter or Subject library>`. Prefer this
   over hand-rolling `addListener` / `emit` clusters.
+
+---
+
+## Tier 0 conventions
+
+> Tier 0 (guard clauses, dispatch maps, Null Object, Result types,
+> Repository, DI) is tried before any GoF pattern, so projects need
+> conventions for it too. Fill these in so every agent writes them the same way.
+
+### Dispatch maps
+
+- **Where handler maps live:** `<src/path/...>` (one map per discriminator,
+  next to the type that defines the keys)
+- **Key type:** closed enum / union `<KindName>` — adding a key must be a
+  compile error until every map handles it (`satisfies Record<Kind, …>`,
+  exhaustive `match`, …)
+- **Missing key:** `<throw UnknownKindError | fall back to X>`
+
+### Repositories / data access
+
+- **Where:** `<src/path/repositories/...>`, one per aggregate
+- **Batch reads are mandatory:** every `byId(id)` has a `byIds(ids)`
+  sibling — loops call the batch method (control-flow.md R5)
+- **Eager loading:** relations needed by list views are loaded in the list
+  query (`<include / select_related / JOIN FETCH convention>`)
+- **GraphQL:** field resolvers go through the DataLoaders in `<src/path/loaders/...>`
+
+### Errors
+
+- **Expected failures:** `<Result type / (value, error) / Option>` defined in `<src/path/...>`
+- **Wrapping:** errors crossing `<layer>` are wrapped with `<Error type / fmt.Errorf("…: %w")>`
+- **Logging:** logged once, at `<request handler / job runner>` — not at every layer
+
+---
+
+## Approved exceptions to the rules
+
+> Places where a smell is expected and allowed. Suppress there with a reason
+> (`// pattern-smell: ignore <smell-id> — <reason>`), or exclude the path in
+> `pattern-check.config.json` → `perPathRules`.
+
+| Path / pattern | Smell | Why it's fine |
+|---|---|---|
+| `<src/clients/*-paginator.ts>` | `n-plus-one`, `await-in-loop` | cursor pagination: each page needs the previous cursor |
+| `<migrations/**>` | `long-function` | generated, never edited by hand |
+| `<src/parsers/**>` | `complexity` | table-driven parser; branches mirror the grammar |
+
+## Smell severity policy
+
+> Which smells this project *blocks* (pattern-smell-gate.js rejects the
+> write) vs only *advises*. Mirror this in `pattern-check.config.json` →
+> `smells.severity`.
+
+| Smell | Severity | Reason |
+|---|---|---|
+| `n-plus-one` | `<block / advise>` | |
+| `nested-if` | `<block / advise>` | |
+| `swallowed-exception` | `<block / advise>` | |
 
 ---
 

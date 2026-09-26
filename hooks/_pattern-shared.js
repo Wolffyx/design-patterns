@@ -87,6 +87,7 @@ const DEFAULT_CONFIG = {
         enabled: true,
         path: '.claude/pattern-decision-log.jsonl',
         blockStatsPath: '.claude/pattern-block-stats.jsonl',
+        smellLogPath: '.claude/pattern-smell-log.jsonl',
     },
 };
 

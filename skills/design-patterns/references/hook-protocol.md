@@ -4,10 +4,36 @@ category: Enforcement
 source: hooks/pattern-context-prep.js, hooks/check-pattern-preamble.js
 ---
 
-# Hook Protocol — PATTERN-CONTEXT preflight
+# Hook Protocol
 
-Read this when a `PATTERN-CONTEXT:` block appears in hook output. It is only
-about the enforcement hooks; design guidance lives in SKILL.md.
+Read this when a `PATTERN-CONTEXT:` block appears in hook output, or when you
+need to know exactly when the hooks fire. It is only about the enforcement
+hooks; design guidance lives in SKILL.md.
+
+## When the preamble hook fires
+
+A Write / Edit / MultiEdit needs a *Pattern check* line when it adds a new
+type or public function, or when its diff is large. "New type" per language:
+
+| Language   | "New type" trigger                                          | Skip token |
+|------------|------------------------------------------------------------|------------|
+| TypeScript | class / interface / abstract / exported fn or arrow-const  | `//`       |
+| Python     | class / Protocol·ABC / `@abstractmethod` / top-level `def` | `#`        |
+| Java       | class / interface / record / enum / abstract               | `//`       |
+| C#         | class / interface / record / struct / abstract             | `//`       |
+| Go         | `type … struct` / `type … interface` / exported `func`     | `//`       |
+| C++        | class / struct / pure-virtual (`… = 0;`)                    | `//`       |
+| Rust       | struct / enum / trait / `pub fn`                            | `//`       |
+
+## The three line thresholds (they are different things)
+
+| Threshold | Owner | Meaning |
+|---|---|---|
+| `smallEditThreshold` (10) | hook | Edits under 10 changed lines with no new exported symbol **skip** the check entirely. |
+| `diffLineThreshold` (40) | hook | Diffs over 40 lines (or any new class / interface / exported fn) **require** a *Pattern check* line. |
+| < 50 lines, one caller | you | Judgement rule: such code **answers** `rejected`. The line is still required when the hook fires. |
+
+## PATTERN-CONTEXT preflight
 
 The `pattern-context-prep.js` PreToolUse hook runs before the blocking
 preamble validator. On substantive edits it emits a `PATTERN-CONTEXT:`
@@ -15,7 +41,7 @@ stderr block with candidate sibling paths, the matching project pattern
 family, recent decisions on this file, and imports already present. Three
 modes — the agent's response rules depend on which mode fired:
 
-## Mode A — full preflight
+### Mode A — full preflight
 
 ```
 PATTERN-CONTEXT: advisory — read 1–3 siblings before Pattern check
@@ -40,7 +66,7 @@ siblings) before emitting `Pattern check:`. The preamble must either:
   anti-extended phrase (`isolated`, `no-siblings`, `unrelated domain`) to
   justify `rejected`.
 
-## Mode B — already-in-family short-circuit
+### Mode B — already-in-family short-circuit
 
 ```
 PATTERN-CONTEXT: already-in-family
@@ -56,7 +82,7 @@ via <cached-path>` directly. Saves tokens on routine edits to files already
 confirmed in a family. The citation/anti-extended validators are
 auto-satisfied by the session cache for this file.
 
-## Mode C — family-health: degraded
+### Mode C — family-health: degraded
 
 Appears as an additional line inside a Mode A block when the decision log
 shows ≥3 `refactor-suggest` or `refactor-candidate` entries against the
@@ -79,7 +105,7 @@ Pattern check: Facade→Facade+Strategy (Tier 1) — refactor-suggest —
 Validator requirements: arrow `→` in pattern name, reason ≥ 40 chars,
 cite a real source path in the edited file's language (`.ts`, `.py`, `.go`, …).
 
-## Worked examples
+### Worked examples
 
 **Example A (Mode A → extended)**. PATTERN-CONTEXT lists
 `src/<feature>/base.ts` + siblings. Agent Reads `base.ts`, sees the

@@ -7,7 +7,7 @@ source: project rules (guard clauses, N+1 branches, N+1 queries)
 
 # Control Flow Rules
 
-Four rules, applied **before** any GoF pattern. Most conditional mess is fixed
+Five rules, applied **before** any GoF pattern. Most conditional mess is fixed
 by one of these, with no new types.
 
 | Rule | Smell id (hook) | Default |
@@ -16,12 +16,14 @@ by one of these, with no new types.
 | R2 Max control-flow depth 2 | `deep-nesting` | `maxNestingDepth: 2` |
 | R3 No `else` after an exit | `else-after-return` | on |
 | R4 N+1 branches: escalate a growing conditional | `conditional-ladder`, `scattered-discriminator` | 3 branches / 3 sites |
-| R5 N+1 queries: no I/O per loop item | `n-plus-one` | on |
+| R5 N+1 queries: never one round-trip per item | `n-plus-one`, `await-in-loop` | on (`minConfidence: medium`) |
 
 The smell detector reports these only on lines the current Edit touched
-(`smells.controlFlowScope: "edited"`), so legacy code elsewhere in the file
-stays quiet. Suppress one site with `// pattern-smell: ignore <smell-id>`
-(`#` in Python) on the line or the line above.
+(`smells.scope: "edited"`), so legacy code elsewhere in the file stays quiet.
+Suppress one site with `// pattern-smell: ignore <smell-id>` (`#` in Python)
+on the line or the line above. To enforce a rule instead of advising, set its
+severity to `block` (`"smells": { "severity": { "nested-if": "block" } }`):
+the smell gate then rejects the write before it lands.
 
 ---
 
@@ -277,12 +279,43 @@ Handle the missing key explicitly (`?? fallback`, `.get(k, default)`,
 
 ---
 
-## R5 — N+1 queries: no I/O per loop item
+## R5 — N+1 queries: never one round-trip per item
 
 One query to load N parents, then one query per parent for its children, is
-N+1 round-trips. The same goes for HTTP calls, cache lookups over the network,
-and sequential `await` in a loop. Load the whole set in one call, or run the
-independent calls concurrently.
+N+1 round-trips: fine with 3 rows in dev, a timeout with 3 000 in production.
+The same holds for HTTP calls, cache lookups over the network, and writes.
+
+### How to think about it
+
+Before writing a loop that touches a database or an API, answer four
+questions. They also decide the fix:
+
+| Question | If yes | Fix |
+|---|---|---|
+| Does the call depend on the loop item? | **per-item** — the classic N+1 | Collect the keys, load all rows in **one** call (`IN` / `= ANY` / `findMany({ id: { in } })` / bulk endpoint) *before* the loop, then look up in a map inside it. |
+| Does the call *not* depend on the loop item? | **loop-invariant** — same call N times | Hoist it above the loop and reuse the result. |
+| Is it a relation read on ORM rows (`order.customer.name`)? | **lazy load** — invisible N+1 | Eager-load in the original query (`select_related` / `selectinload` / `JOIN FETCH` / `.Include` / `include:` / `Preload`). |
+| Is it a write (`save` / `insert` / `update`) per item? | **N writes** | One bulk write (`saveAll`, `bulk_create`, `executemany`, `AddRange` + one `SaveChanges`, `insertMany`, `COPY`). |
+
+Two things are **not** fixes:
+
+- `Promise.all` / `asyncio.gather` / `Task.WhenAll` over N calls is still N
+  round-trips. It hides latency but multiplies load, and it gets rate-limited.
+  Use it only when no batch API exists, and then bound the concurrency
+  (`p-limit`, a semaphore, `errgroup.SetLimit`).
+- Caching per item inside the loop. Batch first; cache the batch if needed.
+
+A **GraphQL field resolver** that queries per parent object is an N+1 with
+no visible loop: the executor loops for you. Use a DataLoader (batch + per-request cache).
+
+Loops where I/O per iteration is correct: **cursor pagination** (each page
+needs the previous page's cursor), **polling / retry** loops, and
+**order-dependent writes** (each step reads what the previous one wrote).
+These are `while`-shaped by nature. Suppress with the reason when a
+`for`-loop genuinely needs it:
+`// pattern-smell: ignore n-plus-one — rate-limited API, sequential by contract`.
+
+### Fixes by stack
 
 | Instead of (inside the loop) | Do |
 |---|---|
@@ -354,10 +387,25 @@ let customers = sqlx::query_as!(Customer,
     .fetch_all(&pool).await?;
 ```
 
-Legitimate loops with I/O inside: cursor pagination (`while (next) { page =
-await fetch(next) }`), rate-limited APIs that forbid concurrency, and
-order-dependent writes. Suppress with a reason:
-`// pattern-smell: ignore n-plus-one — cursor pagination, next page depends on previous`.
+### What the detector reports
 
-Project-specific I/O calls (an internal SDK, a custom repository base) go in
-`smells.nPlusOne.extraCallPatterns` as regex sources.
+`n-plus-one` findings carry a confidence; `smells.nPlusOne.minConfidence`
+(default `medium`) sets the floor.
+
+| Confidence | Evidence |
+|---|---|
+| high | a known driver / ORM / HTTP API: `.findUnique(`, `.findById(`, `cursor.execute(sql`, `.objects.get(`, `session.get(Model`, `db.QueryRowContext(`, `.FirstOrDefaultAsync(`, `fetch(`, `requests.get(`, `sqlx::query!`, … plus `nPlusOne.extraCallPatterns` |
+| medium | any method on a data-access receiver (`userRepo.x(`, `this.apiClient.x(`, `db.x(`; override with `nPlusOne.dataAccessReceivers`); a same-file function that (transitively) does I/O; a lazy relation read on ORM rows fetched without eager loading; a resolver querying per parent |
+| low | a sequential `await` with no recognised I/O call — reported as the separate `await-in-loop` smell (`nPlusOne.flagAwaitInLoop`) |
+
+Each finding says which case it is: **per-item** (batch it),
+**loop-invariant** (hoist it), **N writes** (bulk write), **concurrent**
+(inside `Promise.all`: still N round-trips), or **nested** (N×M).
+
+Skipped by default: `while` / `do` / `loop` bodies (pagination, polling,
+retry — enable with `nPlusOne.includeWhileLoops`), and loops over literal
+collections or literal ranges ≤ `nPlusOne.smallLoopMax` (10).
+
+Project-specific I/O (an internal SDK, a custom repository base) goes in
+`nPlusOne.extraCallPatterns` (regex sources, high confidence) or
+`nPlusOne.dataAccessReceivers` (a regex for receiver names, medium).

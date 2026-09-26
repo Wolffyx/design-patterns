@@ -1,0 +1,38 @@
+[
+  {
+    "smellId": "singleton",
+    "line": 11
+  },
+  {
+    "smellId": "long-constructor",
+    "line": 18
+  },
+  {
+    "smellId": "switch-on-type",
+    "line": 23
+  },
+  {
+    "smellId": "nested-if",
+    "line": 39
+  },
+  {
+    "smellId": "deep-nesting",
+    "line": 40
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 47
+  },
+  {
+    "smellId": "boolean-flag-param",
+    "line": 52
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 56
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 59
+  }
+]

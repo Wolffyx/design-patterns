@@ -24,6 +24,7 @@ Copy these directories and files **as-is** — no edits needed:
 .claude/skills/pattern-review/        # on-demand cross-file audit skill
 .claude/hooks/check-pattern-preamble.js
 .claude/hooks/pattern-smell-detector.js
+.claude/hooks/pattern-smell-gate.js
 .claude/hooks/log-pattern-decision.js
 .claude/hooks/session-start-reminder.js
 .claude/hooks/user-prompt-reminder.js
@@ -33,6 +34,11 @@ Copy these directories and files **as-is** — no edits needed:
 .claude/hooks/_pattern-shared.js
 .claude/hooks/_smell-corpus.js
 .claude/hooks/_control-flow-smells.js
+.claude/hooks/_code-scan.js
+.claude/hooks/_smells.js
+.claude/hooks/_gof-smells.js
+.claude/hooks/_function-smells.js
+.claude/hooks/_nplusone.js
 ```
 
 ## Step 2. Create the project-usage doc
@@ -169,7 +175,8 @@ diff large enough to imply structural change — emit ONE line first.
 | Layer | Hook | Behavior |
 |-------|------|----------|
 | 1 | `.claude/hooks/check-pattern-preamble.js` (PreToolUse) | **Blocks** on substantive triggers if no preamble |
-| 2 | `.claude/hooks/pattern-smell-detector.js` (PostToolUse) | **Non-blocking** — scans the post-edit file for pattern-candidate smells |
+| 2 | `.claude/hooks/pattern-smell-detector.js` (PostToolUse) | **Non-blocking** — scans the lines the edit touched for design smells (GoF shapes, control flow, functions, N+1) |
+| 2b | `.claude/hooks/pattern-smell-gate.js` (PreToolUse) | **Blocks** only smells set to `block` in `smells.severity`; no-op otherwise |
 | 3 | `/pattern-review` skill (on-demand) | Cross-file analysis, hot-spot detection, missed-extension check |
 | 4 | `.claude/hooks/log-pattern-decision.js` (PostToolUse) | Appends every Pattern check line to `.claude/pattern-decision-log.jsonl` |
 
@@ -195,7 +202,8 @@ Merge this into `.claude/settings.json` (or `.claude/settings.local.json`):
     ],
     "PreToolUse": [
       { "matcher": "Write|Edit|MultiEdit", "hooks": [
-        { "type": "command", "command": "node .claude/hooks/check-pattern-preamble.js" }
+        { "type": "command", "command": "node .claude/hooks/check-pattern-preamble.js" },
+        { "type": "command", "command": "node .claude/hooks/pattern-smell-gate.js" }
       ]}
     ],
     "PostToolUse": [

@@ -1,0 +1,90 @@
+[
+  {
+    "smellId": "singleton",
+    "line": 2
+  },
+  {
+    "smellId": "observer",
+    "line": 8
+  },
+  {
+    "smellId": "command",
+    "line": 14
+  },
+  {
+    "smellId": "template-method",
+    "line": 19
+  },
+  {
+    "smellId": "long-constructor",
+    "line": 26
+  },
+  {
+    "smellId": "switch-on-type",
+    "line": 30
+  },
+  {
+    "smellId": "instanceof-chain",
+    "line": 40
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 42
+  },
+  {
+    "smellId": "nested-if",
+    "line": 52
+  },
+  {
+    "smellId": "deep-nesting",
+    "line": 53
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 60
+  },
+  {
+    "smellId": "conditional-ladder",
+    "line": 66
+  },
+  {
+    "smellId": "scattered-discriminator",
+    "line": 66
+  },
+  {
+    "smellId": "else-after-return",
+    "line": 68
+  },
+  {
+    "smellId": "boolean-flag-param",
+    "line": 76
+  },
+  {
+    "smellId": "long-param-list",
+    "line": 78
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 82
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 83
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 84
+  },
+  {
+    "smellId": "await-in-loop",
+    "line": 87
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 89
+  },
+  {
+    "smellId": "swallowed-exception",
+    "line": 90
+  }
+]

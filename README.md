@@ -10,16 +10,18 @@ language-native forms, and the Gang of Four catalog) plus **Pattern Check
 - Control-flow rules (`references/control-flow.md`): no nested `if`
   (guard clauses), max nesting depth 2, no `else` after `return`, the
   **N+1 branches** ladder (`if` → dispatch map → Strategy / State), and
-  **N+1 query** prevention (batch / eager load / DataLoader).
+  **N+1 query** prevention (batch, hoist, eager load, bulk write, DataLoader).
+- Function and error rules (`references/functions.md`): small functions,
+  few parameters, no boolean flags, low complexity, command/query separation,
+  never swallow an error, wrap errors at boundaries.
 - Tier 0 non-GoF patterns (`references/extras.md`): Null Object, Result
   type, Repository, Specification, Pipeline / Middleware, Dependency Injection.
-- 11 GoF smell detectors that suggest a pattern when code shape calls for one
-  (Strategy, State, Visitor, Factory Method, Builder, Facade, Adapter,
-  Singleton, Observer, Command, Template Method).
-- 6 control-flow smell detectors in all seven languages: `nested-if`,
-  `deep-nesting`, `else-after-return`, `conditional-ladder`,
-  `scattered-discriminator`, `n-plus-one`. They only report lines the current
-  edit touched.
+- 23 smell detectors, all seven languages (GoF shapes, control flow,
+  functions, N+1). Advisory by default and scoped to the lines each edit
+  touches; any of them can be made **blocking** per project.
+- N+1 detection that grades evidence (known ORM / HTTP API, data-access
+  receiver, same-file I/O helper, lazy relation load, GraphQL resolver) and
+  says which fix applies: batch, hoist, bulk write, eager load.
 - Cross-file duplicate detector — flags shared shapes across files as strong
   Strategy/Visitor candidates.
 - `PreToolUse` hook that **blocks** Write/Edit/MultiEdit on TypeScript,
@@ -27,8 +29,9 @@ language-native forms, and the Gang of Four catalog) plus **Pattern Check
   `Pattern check: …` preamble. Language detection lives in
   `hooks/_languages.js` — add a language with one entry.
 - Decision-log analyzer (`analyze-log.js`) — surfaces drift, hotspots,
-  per-path pattern frequency.
+  per-path pattern frequency, and per-smell suppression rates with tuning hints.
 - `/pattern-review` slash command — on-demand cross-file project audit.
+- Eval suite (`evals/`) for `claude plugin eval`.
 
 **Tier 0** first (guard clause, dispatch map, null object, result type,
 repository, DI, language-native forms), then **Tier 1**: Factory Method,
@@ -154,7 +157,8 @@ in [`pattern-check.schema.json`](pattern-check.schema.json).
 | UserPromptSubmit  | `user-prompt-reminder.js`         | no        | Brief reminder on each prompt |
 | PreToolUse        | `pattern-context-prep.js`         | no        | Sibling-class hint, recent decisions |
 | PreToolUse        | `check-pattern-preamble.js`       | **yes**   | Reject Write/Edit/MultiEdit without `Pattern check: …` preamble |
-| PostToolUse       | `pattern-smell-detector.js`       | no        | Emit smell suggestions to stderr |
+| PreToolUse        | `pattern-smell-gate.js`           | opt-in    | Reject a write that introduces a smell configured as `block` |
+| PostToolUse       | `pattern-smell-detector.js`       | no        | Emit smell suggestions to stderr, log them for tuning |
 | PostToolUse       | `log-pattern-decision.js`         | no        | Append decision to `pattern-decision-log.jsonl` |
 
 Bypass for mechanical codemods: include `// pattern-check: skip <reason>`
@@ -164,30 +168,66 @@ in the file payload.
 
 ## Smell detectors
 
-| smellId             | Trigger                                                                           | Suggests                              |
-|---------------------|-----------------------------------------------------------------------------------|---------------------------------------|
-| `switch-on-type`    | ≥4 cases on `.type` / `.kind` / `.variant` / `.tag`                               | Strategy, State                       |
-| `instanceof-chain`  | ≥3 branches of `instanceof` / `typeof`                                            | Strategy, Visitor                     |
-| `repeated-new`      | ≥3 `new Concrete(...)` of one ctor in one file                                    | Factory Method                        |
-| `long-constructor`  | ≥5 constructor params                                                             | Builder                               |
-| `god-class`         | ≥8 public methods on one class                                                    | Facade or split by responsibility     |
-| `boundary-violation`| Forbidden import in a guarded path                                                | Adapter (route through port)          |
-| `family-naming`     | New `*Factory` / `*Adapter` / `*Facade` / `*Registry`                             | Verify it extends the existing family |
-| `singleton`         | private ctor + static instance + `getInstance()`                                  | Singleton (verify global is intentional) |
-| `observer`          | ≥3 of `addListener` / `on(` / `subscribe(` / `emit(` / `notify(` clustered in one class | Observer                          |
-| `command`           | class with `execute()` + `undo()` OR `Command[]` / `history` field                 | Command                               |
-| `template-method`   | abstract class with ≥2 abstract methods called via `this.` from one concrete method | Template Method                     |
-| `nested-if`         | `if` directly inside another `if` / bare `else` block                             | Guard clause, merged condition, `else if` |
-| `deep-nesting`      | control-flow depth (if / loop / switch / try) > `maxNestingDepth` (2)             | Guard clauses, extract function       |
-| `else-after-return` | `else` / `elif` after return / throw / raise / continue / break                   | Drop the `else`, dedent               |
-| `conditional-ladder`| if / else-if chain comparing one subject to literals, ≥3 branches                 | Dispatch map, Strategy                |
-| `scattered-discriminator` | one subject compared to string / enum literals at ≥3 sites in a file        | State, Strategy, polymorphism         |
-| `n-plus-one`        | DB / HTTP call (or sequential `await`) inside a loop, `forEach` / `map`, or comprehension | Batch query, eager load, DataLoader |
+All detectors work on TypeScript, Python, Java, C#, Go, C++ and Rust, on
+comment- and string-masked code. On an Edit / MultiEdit they report only the
+lines the edit wrote, or the class / function it touched
+(`smells.scope: "edited"`). A `Write` or `/pattern-review` reports the whole file.
 
-`switch-on-type` skips switches marked exhaustive (`assertNever`, `: never`,
-`unreachable`). Control-flow smells report only lines the Edit / MultiEdit
-wrote (`smells.controlFlowScope: "edited"`). A `Write` or `/pattern-review`
-reports the whole file.
+**GoF shapes** (`hooks/_gof-smells.js`)
+
+| smellId             | Trigger                                                                  | Suggests |
+|---------------------|--------------------------------------------------------------------------|----------|
+| `switch-on-type`    | ≥4 cases on `.type/.kind/.variant/.tag`, Go type switch, Python `match x.kind`, C# switch expression — skipped when marked exhaustive (`assertNever`, `: never`, `unreachable`) | Strategy, State |
+| `instanceof-chain`  | ≥3 branches of `instanceof` / `typeof` / `isinstance` / `is T` / `dynamic_cast` / `.(T)` / `downcast_ref` | Strategy, Visitor |
+| `repeated-new`      | ≥3 constructions of one type (`new X(`, `X(` in Python, `&X{`, `X::new(`, `make_unique<X>`) | Factory Method |
+| `god-class`         | ≥8 public methods on one class / struct / impl / interface               | Facade, split, Interface Segregation |
+| `boundary-violation`| forbidden import (any language's import form) in a guarded path          | Adapter |
+| `family-naming`     | new `*Factory` / `*Adapter` / `*Facade` / `*Registry` type                | verify it extends the family |
+| `singleton`         | private ctor + static instance, `__new__` + `_instance`, `sync.Once`, `OnceLock` / `lazy_static!`, static `instance()` | Singleton (verify global is intentional) |
+| `observer`          | ≥3 pub/sub methods (`on`, `emit`, `subscribe`, `notify`, …) on one type  | Observer |
+| `command`           | `execute`/`do` + `undo`, or a command history field                      | Command |
+| `template-method`   | abstract type whose concrete method calls ≥2 of its abstract steps       | Template Method |
+
+**Control flow** (`hooks/_control-flow-smells.js`)
+
+| smellId             | Trigger | Suggests |
+|---------------------|---------|----------|
+| `nested-if`         | `if` directly inside another `if` / bare `else` block | guard clause, merged condition, `else if` |
+| `deep-nesting`      | control-flow depth (if / loop / switch / try) > `maxNestingDepth` (2) | guard clauses, extract function |
+| `else-after-return` | `else` / `elif` after return / throw / raise / continue / break | drop the `else`, dedent |
+| `conditional-ladder`| if / else-if chain comparing one subject to literals, ≥3 branches | dispatch map, Strategy |
+| `scattered-discriminator` | one subject compared to string / enum literals at ≥3 sites | State, Strategy, polymorphism |
+
+**Functions and errors** (`hooks/_function-smells.js`)
+
+| smellId               | Trigger | Suggests |
+|-----------------------|---------|----------|
+| `long-function`       | body > `maxFunctionLines` (50) non-blank lines | extract functions |
+| `long-param-list`     | > `maxParams` (4) parameters | parameter / options object |
+| `long-constructor`    | ≥ `constructorMaxParams` (5) constructor parameters (`constructor`, `__init__`, `NewX`, Rust `new`, class-named) | Builder, options, named args |
+| `boolean-flag-param`  | a bool parameter on a non-setter | two functions, enum |
+| `complexity`          | cyclomatic complexity > `maxComplexity` (10) | guard clauses, extract, dispatch map |
+| `swallowed-exception` | empty `catch`, `except: pass`, empty `if err != nil {}`, `Err(_) => {}`, `.catch(() => {})` — a comment inside marks it intentional | handle, log with context, rethrow |
+
+**N+1** (`hooks/_nplusone.js`)
+
+| smellId         | Trigger | Suggests |
+|-----------------|---------|----------|
+| `n-plus-one`    | I/O inside a `for` / `forEach` / `map` / comprehension, graded **high** (known ORM / driver / HTTP API) or **medium** (data-access receiver, same-file I/O helper, lazy relation load on un-eager-loaded ORM rows, GraphQL resolver per parent). Classified as per-item, loop-invariant, N writes, concurrent-but-still-N, or nested N×M. `while` loops (pagination / polling) and small literal loops are skipped. | batch + map lookup, hoist, bulk write, eager load, DataLoader |
+| `await-in-loop` | sequential `await` in a loop with no recognised I/O call (low confidence) | `Promise.all` / `gather` / `WhenAll` (bounded) when independent |
+
+### Blocking a smell
+
+Every smell is advisory by default. To enforce one, set its severity:
+
+```json
+{ "smells": { "severity": { "nested-if": "block", "n-plus-one": "block", "swallowed-exception": "block" } } }
+```
+
+`pattern-smell-gate.js` (PreToolUse) then computes the file as it would be
+after the Write / Edit, runs every detector, and rejects the tool call when
+a `block` smell sits on a line the call writes. Legacy smells elsewhere in
+the file never block. `"off"` hides a smell entirely; `"*"` sets a default.
 
 ### Suppress a smell on one line
 
@@ -268,27 +308,40 @@ list. Highlights:
 - `forbiddenPatterns` — block `applied` of any listed pattern (use
   sparingly — most patterns deserve a fair hearing).
 - `smells.crossFile.enabled` — opt-in cross-file duplicate detection.
-- `smells.maxNestingDepth` (2), `smells.nestedIf`, `smells.elseAfterReturn`,
-  `smells.conditionalLadderMinBranches` (3),
-  `smells.scatteredDiscriminatorMinSites` (3). Set a number to `0` to disable
-  that detector.
-- `smells.nPlusOne.{enabled, flagAwaitInLoop, extraCallPatterns}`: add regex
-  sources for project-specific I/O calls (an internal SDK, a repository base).
-- `smells.controlFlowScope`: `"edited"` (default) or `"file"`.
+- `smells.severity`: per smell id (or `"*"`) `"off"`, `"advise"` (default)
+  or `"block"` (enforced by `pattern-smell-gate.js`).
+- `smells.scope`: `"edited"` (default) or `"file"`.
+- Control flow: `smells.maxNestingDepth` (2), `smells.nestedIf`,
+  `smells.elseAfterReturn`, `smells.conditionalLadderMinBranches` (3),
+  `smells.scatteredDiscriminatorMinSites` (3).
+- Functions: `smells.maxFunctionLines` (50), `smells.maxParams` (4),
+  `smells.booleanFlagParam`, `smells.maxComplexity` (10),
+  `smells.swallowedException`. Set a number to `0` to disable that detector.
+- N+1: `smells.nPlusOne.minConfidence` (`high` / `medium` / `low`),
+  `flagAwaitInLoop`, `includeWhileLoops`, `smallLoopMax`,
+  `followLocalFunctions`, `lazyLoad`, `resolvers`, `extraCallPatterns` (regex
+  sources for project-specific I/O), `dataAccessReceivers` (regex for
+  receiver names).
+
+`node hooks/analyze-log.js` reports, per smell, how often it was reported
+vs suppressed, and suggests which knob to loosen when a smell is suppressed
+in ≥30% of ≥5 sightings.
 
 ---
 
 ## Tests
 
 ```bash
-npm test            # smoke + matrix (55 cases total, ephemeral sandbox)
-npm run test:smoke  # 39 hook smoke tests, fast
+npm test            # smoke + golden + matrix (75 cases, ephemeral sandbox)
+npm run test:smoke  # 45 hook smoke tests, fast
+npm run test:golden # 14 golden files: every smell, all 7 languages, clean files stay clean
+npm run test:golden:update  # rewrite expected files after a detector change, then review the diff
 npm run test:matrix # 16-case matrix against generated sandbox
 npm run lint        # shellcheck install.sh uninstall.sh
 npm run bundle      # regenerate dist/skill-bundle.md after editing references
 ```
 
-Both test suites are self-contained — they build a temp sandbox in
+All suites are self-contained — they build a temp sandbox in
 `os.tmpdir()` and never touch a real project. Pass `--cwd /path` to
 `run-matrix.js` to opt-in to running against your own codebase.
 
@@ -296,11 +349,35 @@ CI runs all three on every push; a stale `dist/skill-bundle.md` fails the build.
 
 ---
 
+## Evals
+
+`evals/` holds behavior checks for `claude plugin eval`. Each case asks for an
+ordinary change *without* mentioning the rule, then grades whether the skill
+steered the result:
+
+| Case | Checks |
+|---|---|
+| `add-payment-provider` | a 4th provider moves the if/elif ladder to a dispatch map (N+1 branches) |
+| `orders-with-customers` | customers are loaded in one round-trip, not one query per order (N+1 queries) |
+| `signup-validation` | guard clauses, no nested `if`, no `else` after `return` |
+| `config-loader` | only "file missing" falls back to defaults; no swallowed errors |
+| `price-format` | a one-function task stays one function (anti-overuse) |
+
+```bash
+claude plugin eval . --runs 3              # with the plugin vs a no-plugin baseline arm
+claude plugin eval . --case orders-with-customers --runs 1
+```
+
+Results land in `evals/results/` (git-ignored). Runs cost model usage.
+
+---
+
 ## Roadmap
 
-- v1.1 — AST-based detection (ts-morph) to cut regex false positives.
-- v1.1 — telemetry self-tuning (analyze-log auto-suggests config changes).
-- v1.2 — Windows install (`install.ps1`).
+- Optional tree-sitter backend (opt-in dependency) to replace the regex
+  scanner where precision matters.
+- Cross-file N+1: follow I/O helpers across imports, not only within a file.
+- Windows install (`install.ps1`).
 
 ---
 

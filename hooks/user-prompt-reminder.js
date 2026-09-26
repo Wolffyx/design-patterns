@@ -16,7 +16,7 @@ process.stdout.write(
     'with substantive new logic (class, interface, struct, trait, abstract, exported/public function, or >40-line ' +
     'diff), emit `Pattern check: <Pattern> (Tier N) — <decision> — <reason ≥20 chars>` ' +
     'before the Write/Edit tool call. Most bug fixes answer `no GoF pattern — rejected`. ' +
-    'Control flow: guard clauses not nested ifs, dispatch map at 3+ branches, no query per loop item. ' +
+    'Control flow: guard clauses not nested ifs, dispatch map at 3+ branches, no query per loop item, never swallow errors. ' +
     'See .claude/skills/design-patterns/SKILL.md and .claude/design-patterns-project-usage.md.\n'
 );
 process.exit(0);

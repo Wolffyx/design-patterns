@@ -3,8 +3,8 @@ name: pattern-review
 description: >
   On-demand cross-file design-pattern review. Scans the project's source in
   every supported language (TypeScript, Python, Java, C#, Go, C++, Rust), runs
-  every smell detector (GoF + control-flow) from pattern-smell-detector.js (regex-
-  based, fast), aggregates the decision log via analyze-log.js, and produces
+  every smell detector (GoF shapes, control flow, functions, N+1) from
+  pattern-smell-detector.js (regex-based, fast), aggregates the decision log via analyze-log.js, and produces
   a grouped markdown report. Read-only — does not modify code. Use when the
   user runs `/pattern-review` or asks for a project-wide pattern audit.
 ---
@@ -69,8 +69,20 @@ without editing any code.
    ### Conditional ladder / Scattered discriminator
    - <file:line> — <message>
 
-   ### N+1 queries
+   ### Long function / Long parameter list / Boolean flag / Complexity
    - <file:line> — <message>
+
+   ### Swallowed errors
+   - <file:line> — <message>
+
+   ### N+1 queries (grouped by kind: per-item, loop-invariant, N writes, lazy load, resolver)
+   - <file:line> — <message>
+
+   ### Sequential awaits in loops
+   - <file:line> — <message>
+
+   ### Smell tuning (from the analyzer's `smells` array)
+   - <smellId> — reported N · suppressed N — <suggestion if any>
 
    ### Cross-file duplicates
    - <signature> — <fileA>, <fileB>

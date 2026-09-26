@@ -21,9 +21,9 @@ description: >
 
 Write code that is easy to change, test and read. Decide in this order:
 
-1. **Control flow** (§5): flat functions, guard clauses, no N+1s. Applies to
-   every edit.
-2. **Tier 0** (§7): what the language already gives you, like a function,
+1. **Control flow and functions** (§5, §6): flat, small functions, guard
+   clauses, no N+1s, no swallowed errors. Applies to every edit.
+2. **Tier 0** (§8): what the language already gives you, like a function,
    a map, an enum + `match`, or a Result type.
 3. **GoF patterns** (Tier 1 → 3): only when the problem matches one and
    §3 does not reject it.
@@ -44,7 +44,7 @@ code:
 Pattern check: no GoF pattern (-) — rejected — <reason ≥20 chars>.
 ```
 
-**Only when a pattern genuinely applies** (Tier 0 names from §7 are valid):
+**Only when a pattern genuinely applies** (Tier 0 names from §8 are valid):
 
 ```
 Pattern check: <PatternName> (Tier <N>) — applied — <reason ≥20 chars>.
@@ -61,35 +61,31 @@ Pattern check: <PatternName> (Tier <N>) — extended — <cite existing project 
 - The legacy form `Pattern check: <Name> (Tier N) — <reason>` still works.
   Prefer the structured form above: it enables aggregation and typo catching.
 
+Examples:
+
+```
+Pattern check: no GoF pattern (-) — rejected — bug fix in date parsing guard, 6 lines, no structural change.
+Pattern check: Dispatch Map (Tier 0) — applied — 4th payment provider; replaced if/else ladder on provider with a handler map.
+Pattern check: Repository (Tier 0) — extended — OrderRepository mirrors src/<feature>/user-repository.ts, adds byIds() batch read.
+Pattern check: Strategy (Tier 1) — applied — 3 pricing rules with config + 2 operations each; map of functions got too wide.
+Pattern check: Facade→Facade+Strategy (Tier 1) — refactor-suggest — 12-method facade; split per action via src/<feature>/dispatcher.ts.
+```
+
 No silent class creation. No silent interface design. Always declare intent.
 
 ---
 
 ## 2. Multi-language coverage
 
-The enforcement hooks detect substantive symbols in **TypeScript, Python,
-Java, C#, Go, C++, and Rust**. The *Pattern check* line is identical across
-languages. Only the trigger syntax and the skip-comment token differ:
-
-| Language   | "New type" trigger                                          | Skip token |
-|------------|------------------------------------------------------------|------------|
-| TypeScript | class / interface / abstract / exported fn or arrow-const  | `//`       |
-| Python     | class / Protocol·ABC / `@abstractmethod` / top-level `def` | `#`        |
-| Java       | class / interface / record / enum / abstract               | `//`       |
-| C#         | class / interface / record / struct / abstract             | `//`       |
-| Go         | `type … struct` / `type … interface` / exported `func`     | `//`       |
-| C++        | class / struct / pure-virtual (`… = 0;`)                    | `//`       |
-| Rust       | struct / enum / trait / `pub fn`                            | `//`       |
-
-Each pattern's `references/<slug>.md` has the canonical example in every
-supported language, plus a *Lighter idiomatic forms* table. Read the block
-for the language you are editing. Adding a language takes one entry in
-`hooks/_languages.js`.
+The hooks enforce this on **TypeScript, Python, Java, C#, Go, C++, and
+Rust**. The *Pattern check* line is the same in every language. Each
+`references/<slug>.md` has code for all seven plus a *Lighter idiomatic
+forms* table — read the block for the language you are editing. What counts
+as "substantive" per language: `references/hook-protocol.md`.
 
 **Bypass** for mechanical codemods and bulk renames: add
-`// pattern-check: skip <reason>` (or `# pattern-check: skip <reason>` in
-Python) to the file payload. It does not replace the preamble on
-substantive edits.
+`// pattern-check: skip <reason>` (`#` in Python) to the file payload. It
+does not replace the preamble on substantive edits.
 
 ---
 
@@ -162,8 +158,7 @@ interfaces just to satisfy them.
 ## 5. Control-flow rules (every edit)
 
 Full rules, before/after code in all seven languages, and ORM-specific N+1
-fixes are in `references/control-flow.md`. The smell detector checks these on
-the lines each edit touches.
+fixes are in `references/control-flow.md`.
 
 | # | Rule | Smell id |
 |---|---|---|
@@ -171,7 +166,7 @@ the lines each edit touches.
 | R2 | **Max control-flow depth 2** (if / loop / switch / try) inside a function. Depth 3 means extract. | `deep-nesting` |
 | R3 | **No `else` after `return` / `throw` / `raise` / `continue` / `break`.** Drop the `else` and dedent. | `else-after-return` |
 | R4 | **N+1 branches.** A conditional that selects behavior climbs a ladder: ≤ 2 branches `if`/`else` → 3rd branch: **dispatch map** (or exhaustive `match` on a closed enum) → branches need multiple operations or state: **Strategy / State**. The same discriminator compared at a 3rd site: centralize it. Refactor *before* adding branch N+1. | `conditional-ladder`, `scattered-discriminator` |
-| R5 | **N+1 queries.** No DB / HTTP call per loop item. Batch (`IN`, bulk endpoint), eager-load relations, use a DataLoader, or run independent awaits concurrently. | `n-plus-one` |
+| R5 | **N+1 queries.** Never one round-trip per item. A call that depends on the loop item → batch it (`IN` / `= ANY` / bulk endpoint) and join in memory; a call that doesn't → hoist it above the loop; a relation read per row → eager-load it; a write per item → bulk write; a GraphQL field resolver → DataLoader. `Promise.all` over N calls is still N round-trips. Sequential awaits in a loop are fine only when each step needs the previous one (pagination). | `n-plus-one`, `await-in-loop` |
 
 Compound conditions with more than 2 terms go into a named predicate
 (`isEligible(user)`). Repeated null checks call for optional chaining,
@@ -186,14 +181,33 @@ Before adding an `if` / `else if` / `switch` branch, ask:
 
 Any "yes" → move up the R4 ladder instead of adding the branch.
 
+Before writing a loop that touches a database or an API, ask: *how many
+round-trips does this make for 1 000 items?* If the answer is 1 000, restructure first.
+
 ---
 
-## 6. How to use this skill
+## 6. Function and error rules (every edit)
+
+Details and examples in `references/functions.md`.
+
+| Rule | Smell id |
+|---|---|
+| A function does one thing at one level of abstraction; ≤ ~50 lines of body. | `long-function` |
+| ≤ 4 parameters. More → a parameter / options object, or split the function. Constructors with ≥ 5 → Builder / options / named args. | `long-param-list`, `long-constructor` |
+| No boolean flag parameters that switch behavior (`render(x, true)`) → two intention-revealing functions, or an enum. Setters (`setVisible(bool)`) are fine. | `boolean-flag-param` |
+| Cyclomatic complexity ≤ 10 per function → guard clauses, extract, dispatch map. | `complexity` |
+| Commands change state, queries return data — not both (command/query separation). | — |
+| Never swallow an error: handle it, log it with context, or rethrow / wrap it at the boundary. Ignoring on purpose needs a comment saying why. | `swallowed-exception` |
+| Expected failures that callers branch on → a Result / `(value, error)` / `Option` return; truly exceptional ones → exceptions. Follow the language's idiom. | — |
+
+---
+
+## 7. How to use this skill
 
 1. Read this SKILL.md when starting design or coding work.
-2. Apply §5 to the code you are about to write, whatever the pattern answer.
+2. Apply §5 and §6 to the code you are about to write, whatever the pattern answer.
 3. Apply the anti-overuse rule (§3). If it triggers, stop here and emit `rejected`.
-4. Pick a candidate: Tier 0 (§7) first, then the decision tree (§9).
+4. Pick a candidate: Tier 0 first, then the decision tree in `references/catalog.md`.
 5. Read `references/<slug>.md` for the chosen pattern (intent, lighter forms,
    code, "Don't use when"). Cross-check `.claude/design-patterns-project-usage.md`.
 6. Emit the *Pattern check* line (§1).
@@ -201,7 +215,7 @@ Any "yes" → move up the R4 ladder instead of adding the branch.
 
 ---
 
-## 7. Pattern selection
+## 8. Pattern selection
 
 ### Tiers
 
@@ -215,8 +229,13 @@ Any "yes" → move up the R4 ladder instead of adding the branch.
   Adapter, Facade, Strategy, Observer, Iterator, Template Method, and
   Singleton, which is well known but **rejected by default**: prefer DI, a
   module-level instance, or a container scope.
-- **Tier 2** only when no Tier 1 fits (5 patterns).
-- **Tier 3** needs explicit justification in the *Pattern check* reason (7 patterns).
+- **Tier 2** only when no Tier 1 fits: Decorator, Composite, Command, State,
+  Chain of Responsibility.
+- **Tier 3** needs explicit justification in the *Pattern check* reason:
+  Prototype, Proxy, Bridge, Flyweight, Mediator, Memento, Visitor.
+
+Decision tree, quick-lookup table, the full catalog with reference links,
+common combinations and anti-patterns: **`references/catalog.md`**.
 
 ### Default answer: `no GoF pattern`
 
@@ -228,23 +247,17 @@ Before running the decision tree, ask these three questions in order:
    `.claude/design-patterns-project-usage.md`)? → **extend** the existing
    pattern with `decision: extended` and cite the class.
 
-If all three are "no", continue to §9.
+If all three are "no", continue to the decision tree.
 
-### The three line thresholds (they are different things)
-
-| Threshold | Owner | Meaning |
-|---|---|---|
-| `smallEditThreshold` (10) | hook | Edits under 10 changed lines with no new exported symbol **skip** the check entirely. |
-| `diffLineThreshold` (40) | hook | Diffs over 40 lines (or any new class / interface / exported fn) **require** a *Pattern check* line. |
-| < 50 lines, one caller | you | Judgement rule: such code **answers** `rejected`. The line is still required when the hook fires. |
+The hook thresholds (`smallEditThreshold`, `diffLineThreshold`) and how
+they differ from the 50-line judgement rule: `references/hook-protocol.md`.
 
 ---
 
-## 8. Hook preflight (PATTERN-CONTEXT)
+## 9. Hook output you will see
 
-When a `PATTERN-CONTEXT:` block appears in hook output, read
+**`PATTERN-CONTEXT:` block** (before the write). Read
 `references/hook-protocol.md` before emitting the *Pattern check* line.
-Summary:
 
 - **Mode A** (advisory): Read 1–3 hinted sibling paths, then cite one
   (`applied` / `extended`), or say `scanned N siblings, no family match` to
@@ -255,151 +268,20 @@ Summary:
   `refactor-suggest` as `<Current>→<Better>` with a reason ≥ 40 chars citing
   a real path.
 
-§3 still dominates: the preflight gives you information, the judgement stays
-yours.
+**`[pattern-smell]` lines** (after the write, advisory). They cover only the
+lines your edit touched. Fix the smell in the same change when it is yours
+to fix. When it is intentional, add `// pattern-smell: ignore <smell-id>`
+(`#` in Python) with a reason on the line or the line above. Don't
+suppress to make the message go away.
+
+**`BLOCKED by smell gate`** (before the write). The project configured that
+smell as `block`. Rewrite the code (the message links the guide) and retry.
+
+§3 still dominates: the hooks give you information, the judgement stays yours.
 
 ---
 
-## 9. Decision tree
-
-```
-Choosing behavior by a kind / type / status?          (control-flow R4)
-  ├─ ≤ 2 variants → if / else, guard clauses
-  ├─ 3+ variants, one operation each → Dispatch Map (Tier 0) / exhaustive match
-  ├─ Variants carry several operations or config → Strategy
-  ├─ Behavior changes as the object moves through states → State
-  └─ New operations over a fixed closed set of types → Visitor (or match per op)
-
-Need to create objects?
-  ├─ One concrete type, no swap → just `new`, no pattern
-  ├─ Pick concrete type at runtime → Factory Method (or a map of constructors)
-  ├─ Families of related types → Abstract Factory
-  ├─ Many optional params / step-by-step build → Builder (or options object / named args)
-  ├─ Exactly one instance globally → Singleton (last resort — DI / module instance)
-  └─ Cheap clone of an existing instance → Prototype (or language clone / copy)
-
-Need to compose / wrap / bridge structures?
-  ├─ Incompatible interfaces → Adapter
-  ├─ Hide a complex subsystem → Facade
-  ├─ Add behavior without subclass explosion → Decorator (or higher-order fn)
-  ├─ Tree of part-whole → Composite
-  ├─ Lazy / access control / remote stand-in → Proxy
-  ├─ Two independent dimensions of variation → Bridge
-  ├─ Many small objects sharing intrinsic state → Flyweight
-  └─ Persistence leaking into domain logic → Repository (Tier 0)
-
-Need objects to communicate?
-  ├─ Swap algorithms at runtime → Strategy (or pass a function)
-  ├─ Notify N listeners on event → Observer
-  ├─ Walk a collection without exposing internals → Iterator (or generator)
-  ├─ Algorithm skeleton with overridable steps → Template Method
-  ├─ Encapsulate request as object (queue / undo / log) → Command
-  ├─ Pass request through handler chain → Chain of Responsibility / Middleware
-  ├─ Hub coordinating N peer objects → Mediator
-  ├─ Snapshot for undo without exposing internals → Memento
-  └─ Add operations to a class hierarchy without modifying it → Visitor
-
-Handling absence or failure?
-  ├─ Many call sites null-check the same collaborator → Null Object (Tier 0)
-  └─ Expected failure callers must branch on → Result type (Tier 0)
-```
-
----
-
-## 10. Quick decision table
-
-| If you need...                            | Use                         |
-|-------------------------------------------|-----------------------------|
-| Flatten nested ifs                        | **Guard clauses** (Tier 0)  |
-| Pick behavior by key, 3+ variants         | **Dispatch Map** (Tier 0)   |
-| Load related rows for a list              | **Batch / eager load** (R5) |
-| Swap algorithms at runtime                | **Strategy**                |
-| Wrap an incompatible API                  | **Adapter**                 |
-| Hide a complex subsystem                  | **Facade**                  |
-| Pick concrete class at runtime            | **Factory Method**          |
-| Notify N subscribers on event             | **Observer**                |
-| Walk a collection opaquely                | **Iterator**                |
-| Algorithm skeleton with overridable steps | **Template Method**         |
-| Build complex object step-by-step         | **Builder**                 |
-| Families of related products              | **Abstract Factory**        |
-| Encapsulate a request (undo/queue/log)    | **Command**                 |
-| State-dependent behavior                  | **State**                   |
-| Tree of part-whole, treated uniformly     | **Composite**               |
-| Stack runtime behaviors on object         | **Decorator**               |
-| Pipeline of handlers                      | **Chain of Responsibility** |
-| Single global instance                    | **Singleton** (last resort) |
-
----
-
-## 11. Full catalog
-
-| Tier  | Pattern                 | Category   | Pop | Reference                                                                      |
-|-------|-------------------------|------------|-----|--------------------------------------------------------------------------------|
-| **0** | Control-flow rules      | Rules      | –   | [references/control-flow.md](references/control-flow.md)                       |
-| **0** | Null Object, Result, Repository, Specification, Middleware, DI | Non-GoF | – | [references/extras.md](references/extras.md) |
-| **1** | Factory Method          | Creational | 3   | [references/factory-method.md](references/factory-method.md)                   |
-| **1** | Abstract Factory        | Creational | 3   | [references/abstract-factory.md](references/abstract-factory.md)               |
-| **1** | Builder                 | Creational | 3   | [references/builder.md](references/builder.md)                                 |
-| **1** | Singleton (default: reject) | Creational | 3 | [references/singleton.md](references/singleton.md)                           |
-| **1** | Adapter                 | Structural | 3   | [references/adapter.md](references/adapter.md)                                 |
-| **1** | Facade                  | Structural | 3   | [references/facade.md](references/facade.md)                                   |
-| **1** | Strategy                | Behavioral | 3   | [references/strategy.md](references/strategy.md)                               |
-| **1** | Observer                | Behavioral | 3   | [references/observer.md](references/observer.md)                               |
-| **1** | Iterator                | Behavioral | 3   | [references/iterator.md](references/iterator.md)                               |
-| **1** | Template Method         | Behavioral | 3   | [references/template-method.md](references/template-method.md)                 |
-| **2** | Decorator               | Structural | 2   | [references/decorator.md](references/decorator.md)                             |
-| **2** | Composite               | Structural | 2   | [references/composite.md](references/composite.md)                             |
-| **2** | Command                 | Behavioral | 2   | [references/command.md](references/command.md)                                 |
-| **2** | State                   | Behavioral | 2   | [references/state.md](references/state.md)                                     |
-| **2** | Chain of Responsibility | Behavioral | 2   | [references/chain-of-responsibility.md](references/chain-of-responsibility.md) |
-| **3** | Prototype               | Creational | 1   | [references/prototype.md](references/prototype.md)                             |
-| **3** | Proxy                   | Structural | 1   | [references/proxy.md](references/proxy.md)                                     |
-| **3** | Bridge                  | Structural | 1   | [references/bridge.md](references/bridge.md)                                   |
-| **3** | Flyweight               | Structural | 1   | [references/flyweight.md](references/flyweight.md)                             |
-| **3** | Mediator                | Behavioral | 1   | [references/mediator.md](references/mediator.md)                               |
-| **3** | Memento                 | Behavioral | 1   | [references/memento.md](references/memento.md)                                 |
-| **3** | Visitor                 | Behavioral | 1   | [references/visitor.md](references/visitor.md)                                 |
-
-Hook-only material: [references/hook-protocol.md](references/hook-protocol.md).
-
----
-
-## 12. Common pattern combinations
-
-| Combo                     | Use case                                                          |
-|---------------------------|-------------------------------------------------------------------|
-| Strategy + Factory Method | Pluggable algorithm where the factory picks the concrete strategy |
-| Dispatch Map + Strategy   | Map from key to strategy instance: registration without `switch`  |
-| Command + Memento         | Undo/redo                                                         |
-| Observer + Mediator       | Event bus where the mediator dispatches to observers              |
-| Composite + Iterator      | Tree walking                                                      |
-| Facade + Adapter          | Facade hiding multiple Adapters over different backends           |
-| Repository + Adapter      | Domain-shaped repository over a vendor SDK / ORM                  |
-| State + Strategy          | Strategy for the active behavior, State for switching strategies  |
-| Decorator + Strategy      | Stack decorators on top of a base strategy                        |
-
----
-
-## 13. Anti-patterns to avoid (companion catalog)
-
-- **Arrow code**: nested `if` pyramids, so the happy path drifts right →
-  guard clauses (§5 R1–R3)
-- **N+1 queries**: one query per loop item → batch / eager load (§5 R5)
-- **Shotgun conditionals**: the same `status ==` check in many places →
-  centralize via map / State / polymorphism (§5 R4)
-- **God Object / God Class**: a class doing >5 unrelated things → split by responsibility
-- **Anemic Domain Model**: data class with no behavior plus a service class
-  holding all its rules → move invariants and rules onto the type that owns the data
-- **Singleton abuse**: Singleton for state-passing convenience → use DI / context / a store slice
-- **Pattern soup**: stacking 3+ patterns to do one job (Adapter+Decorator+Strategy where Adapter alone fits)
-- **Premature Factory**: Factory for one concrete type → just call `new`
-- **Stringly-typed dispatch**: `if (type === 'foo')` chains → enum + dispatch map, Strategy, or polymorphism
-- **Inheritance-for-reuse**: `extends` to grab methods → composition / Strategy / Decorator
-- **Speculative interface**: interface with one implementation and no boundary → use the concrete class
-
----
-
-## 14. Plan workflow integration
+## 10. Plan workflow integration
 
 When the planning workflow runs (Plan agent, ExitPlanMode plans, design discussions):
 
@@ -414,7 +296,7 @@ Plans without *Pattern check:* lines for new abstractions are incomplete.
 
 ---
 
-## 15. Memory non-pollution rule
+## 11. Memory non-pollution rule
 
 This skill's content lives in this skill, NOT in any user memory system. Do
 not save pattern definitions, examples, or star ratings to memory. Memory is

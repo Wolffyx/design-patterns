@@ -65,11 +65,17 @@
   "log": {
     "enabled": true,
     "path": ".claude/pattern-decision-log.jsonl",
-    "blockStatsPath": ".claude/pattern-block-stats.jsonl"
+    "blockStatsPath": ".claude/pattern-block-stats.jsonl",
+    "smellLogPath": ".claude/pattern-smell-log.jsonl"
   },
 
   "smells": {
     "enabled": true,
+    "scope": "edited",
+    "severity": {
+      "nested-if": "advise",
+      "n-plus-one": "advise"
+    },
     "switchOnTypeMinCases": 4,
     "instanceofChainMinBranches": 3,
     "repeatedNewMinOccurrences": 3,
@@ -80,11 +86,22 @@
     "elseAfterReturn": true,
     "conditionalLadderMinBranches": 3,
     "scatteredDiscriminatorMinSites": 3,
-    "controlFlowScope": "edited",
+    "maxFunctionLines": 50,
+    "maxParams": 4,
+    "booleanFlagParam": true,
+    "maxComplexity": 10,
+    "swallowedException": true,
     "nPlusOne": {
       "enabled": true,
+      "minConfidence": "medium",
       "flagAwaitInLoop": true,
-      "extraCallPatterns": []
+      "includeWhileLoops": false,
+      "smallLoopMax": 10,
+      "followLocalFunctions": true,
+      "lazyLoad": true,
+      "resolvers": true,
+      "extraCallPatterns": [],
+      "dataAccessReceivers": ""
     },
     "boundaryViolationPaths": {
       "guardedPath": "",
