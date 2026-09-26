@@ -31,7 +31,7 @@ type or public function, or when its diff is large. "New type" per language:
 |---|---|---|
 | `smallEditThreshold` (10) | hook | Edits under 10 changed lines with no new exported symbol **skip** the check entirely. |
 | `diffLineThreshold` (40) | hook | Diffs over 40 lines (or any new class / interface / exported fn) **require** a *Pattern check* line. |
-| < 50 lines, one caller | you | Judgement rule: such code **answers** `rejected`. The line is still required when the hook fires. |
+| < 50 lines, one caller | you | Judgement rule: such code **answers** `rejected` for GoF patterns. The control-flow rules (R1–R5) and their Tier 0 forms still apply. The line is still required when the hook fires. |
 
 ## PATTERN-CONTEXT preflight
 
