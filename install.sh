@@ -7,11 +7,14 @@
 #
 # Steps:
 #   - require node ≥ 18
-#   - back up existing real (non-symlink) ~/.claude/{skills/design-patterns,hooks}
+#   - back up existing real (non-symlink) ~/.claude/skills/design-patterns
+#     and ~/.claude/design-patterns/hooks
 #   - symlink ~/.claude/skills/design-patterns → <repo>/skills/design-patterns
-#   - symlink ~/.claude/hooks                  → <repo>/hooks
-#   - merge hooks block from settings.example.json into ~/.claude/settings.json
-#     (replacing $HOME with the user's actual home)
+#   - symlink ~/.claude/design-patterns/hooks  → <repo>/hooks
+#     (pre-1.1 installs linked all of ~/.claude/hooks: that link is removed and
+#     the user's own ~/.claude/hooks is restored from its backup)
+#   - add this plugin's hook entries to ~/.claude/settings.json, keeping every
+#     other hook (scripts/settings-hooks.js; $HOME → the user's actual home)
 #
 # Recommended path: install via Claude Code plugin instead.
 #   /plugin marketplace add <user>/design-patterns
@@ -88,11 +91,12 @@ echo "▸ node $(node -v)"
 
 CLAUDE_DIR="$HOME/.claude"
 SKILL_LINK="$CLAUDE_DIR/skills/design-patterns"
-HOOKS_LINK="$CLAUDE_DIR/hooks"
+HOOKS_LINK="$CLAUDE_DIR/design-patterns/hooks"
+LEGACY_HOOKS_LINK="$CLAUDE_DIR/hooks"
 TS="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="$CLAUDE_DIR/backups/design-patterns-$TS"
 
-mkdir -p "$CLAUDE_DIR/skills"
+mkdir -p "$CLAUDE_DIR/skills" "$CLAUDE_DIR/design-patterns"
 
 backup_if_real() {
   local target="$1" name="$2"
@@ -104,7 +108,28 @@ backup_if_real() {
 }
 
 backup_if_real "$SKILL_LINK" "skills-design-patterns"
-backup_if_real "$HOOKS_LINK" "hooks"
+backup_if_real "$HOOKS_LINK" "design-patterns-hooks"
+
+# --- migrate a pre-1.1 install --------------------------------------------
+# Older versions symlinked all of ~/.claude/hooks to <repo>/hooks and moved
+# the user's own directory into a backup. Drop that link when it is ours and
+# put the user's directory back.
+
+restore_legacy_hooks() {
+  local latest=""
+  for dir in "$CLAUDE_DIR/backups/design-patterns-"*; do
+    [ -d "$dir/hooks" ] && latest="$dir"
+  done
+  [ -n "$latest" ] || return 0
+  mv "$latest/hooks" "$LEGACY_HOOKS_LINK"
+  echo "▸ restored your $LEGACY_HOOKS_LINK from $latest"
+}
+
+if [ -L "$LEGACY_HOOKS_LINK" ] && [ -f "$LEGACY_HOOKS_LINK/_pattern-shared.js" ]; then
+  rm "$LEGACY_HOOKS_LINK"
+  echo "▸ removed legacy symlink $LEGACY_HOOKS_LINK"
+  restore_legacy_hooks
+fi
 
 # --- create symlinks ------------------------------------------------------
 
@@ -124,7 +149,7 @@ for cmd in "$REPO"/commands/*.md; do
   echo "▸ symlinked command /$(basename "$cmd" .md)"
 done
 
-# --- merge hooks block into settings.json ---------------------------------
+# --- add our hook entries to settings.json --------------------------------
 
 SETTINGS="$CLAUDE_DIR/settings.json"
 EXAMPLE="$REPO/settings.example.json"
@@ -132,36 +157,9 @@ EXAMPLE="$REPO/settings.example.json"
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 cp "$SETTINGS" "$SETTINGS.bak-$TS"
 
-node - <<NODE
-const fs = require('fs');
-const path = require('path');
-const settingsPath = '$SETTINGS';
-const examplePath  = '$EXAMPLE';
-const home = process.env.HOME;
+node "$REPO/scripts/settings-hooks.js" add "$SETTINGS" "$EXAMPLE"
 
-const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-const example  = JSON.parse(fs.readFileSync(examplePath,  'utf8'));
-
-// substitute \$HOME literal in example commands
-function subst(node) {
-  if (Array.isArray(node)) return node.map(subst);
-  if (node && typeof node === 'object') {
-    const out = {};
-    for (const [k, v] of Object.entries(node)) {
-      out[k] = (k === 'command' && typeof v === 'string')
-        ? v.replace(/\\\$HOME/g, home)
-        : subst(v);
-    }
-    return out;
-  }
-  return node;
-}
-
-settings.hooks = subst(example.hooks);
-fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
-NODE
-
-echo "▸ merged hooks block into $SETTINGS (backup: $SETTINGS.bak-$TS)"
+echo "▸ added design-patterns hooks to $SETTINGS, other hooks kept (backup: $SETTINGS.bak-$TS)"
 
 # --- optional tree-sitter parsers ---------------------------------------
 

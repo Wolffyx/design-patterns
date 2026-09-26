@@ -42,7 +42,7 @@ main().then(() => process.exit(fail === 0 ? 0 : 1), e => {
 });
 
 async function main() {
-if (PARSER === 'tree-sitter' && !tsScan.available(s.parserPath)) {
+if (PARSER === 'tree-sitter' && !tsScan.available()) {
     throw new Error('tree-sitter parsers not installed — run: node scripts/install-parsers.js');
 }
 // golden-ast/: shapes only the syntax tree can see (brace-less bodies, braces in literals)

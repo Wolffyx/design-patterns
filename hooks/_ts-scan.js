@@ -29,6 +29,10 @@ const GRAMMAR = { ts: 'typescript', py: 'python', java: 'java', cs: 'c-sharp', g
 
 // --- loading ------------------------------------------------------------------
 
+// Where the parsers are loaded from: DESIGN_PATTERNS_PARSERS_DIR, the default
+// install directory, or the plugin's own node_modules. Never a path from
+// project config: a cloned repo controls that file, and the package found here
+// is `require`d — it would run the repo's code on the next edit.
 function defaultParserDir() {
     return process.env.DESIGN_PATTERNS_PARSERS_DIR ||
         path.join(os.homedir(), '.claude', 'design-patterns', 'parsers');
@@ -359,7 +363,8 @@ function walk(ctx, node, parent) {
  * @param {string} text
  * @param {string} langId     id from _languages.js
  * @param {string} filePath   picks the TSX grammar for .tsx
- * @param {string} [parserDir] configured install location (smells.parserPath)
+ * @param {string} [parserDir] install location to try first — trusted callers only
+ *                             (scripts/install-parsers.js --check), never project config
  */
 async function scan(text, langId, filePath, parserDir) {
     const grammar = grammarFor(langId, filePath);

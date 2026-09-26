@@ -1,0 +1,19 @@
+{
+  "name": "design-patterns-parsers",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "design-patterns-parsers",
+      "dependencies": {
+        "@vscode/tree-sitter-wasm": "0.3.1"
+      }
+    },
+    "node_modules/@vscode/tree-sitter-wasm": {
+      "version": "0.3.1",
+      "resolved": "https://registry.npmjs.org/@vscode/tree-sitter-wasm/-/tree-sitter-wasm-0.3.1.tgz",
+      "integrity": "sha512-RJFoomET6FajjG511fmQxeBQfU6M24a0aFZPqpid+ttIxanWf1VGytBG0UmsGjt07qmIPJS8U31D+aecuCucsQ==",
+      "license": "MIT"
+    }
+  }
+}

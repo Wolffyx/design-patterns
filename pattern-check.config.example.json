@@ -72,7 +72,6 @@
   "smells": {
     "enabled": true,
     "parser": "auto",
-    "parserPath": "",
     "scope": "edited",
     "severity": {
       "nested-if": "advise",

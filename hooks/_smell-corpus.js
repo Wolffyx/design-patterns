@@ -23,21 +23,23 @@
 
 const fs = require('fs');
 const path = require('path');
+const shared = require('./_pattern-shared');
 
+/** null when the configured path leaves <project>/.claude/ — the cache is then skipped. */
 function cachePath(cfg) {
-    const rel = (cfg && cfg.cachePath) || '.claude/cache/pattern-smell-corpus.json';
-    return path.resolve(process.cwd(), rel);
+    return shared.projectFile((cfg && cfg.cachePath) || '.claude/cache/pattern-smell-corpus.json');
 }
 
 function readCache(cfg) {
     const p = cachePath(cfg);
-    if (!fs.existsSync(p)) return {};
+    if (!p || !fs.existsSync(p)) return {};
     try { return JSON.parse(fs.readFileSync(p, 'utf8')) || {}; }
     catch { return {}; }
 }
 
 function writeCache(cfg, data) {
     const p = cachePath(cfg);
+    if (!p) return;
     try {
         fs.mkdirSync(path.dirname(p), { recursive: true });
         fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');

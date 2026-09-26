@@ -96,6 +96,46 @@ versioning: [SemVer](https://semver.org/).
 - Literal `\u2014` escape sequences (22 of them) in `PORTING.md` rendered as raw text.
 - `instanceof-chain` only caught one-line chains.
 
+### Security
+
+A cloned repository ships its own `.claude/pattern-check.config.json` and
+can contain symlinks, so both are now treated as untrusted.
+
+- **Code execution through project config.** `smells.parserPath` chose the
+  tree-sitter package that `_ts-scan.js` loads with `require`, so a repository
+  could ship its own "parser" that ran on the first edit. The option is
+  removed. Parsers load only from `DESIGN_PATTERNS_PARSERS_DIR`,
+  `~/.claude/design-patterns/parsers` or the plugin directory.
+- **File writes anywhere through project config.** The hooks used
+  `log.path`, `log.blockStatsPath`, `log.smellLogPath`, `sessionCache.path`
+  and the cross-file `cachePath`s as given, and followed symlinks in
+  `.claude/`. These paths must now resolve inside `<project>/.claude/` after
+  symlinks are followed (`sessionCache.path` may also use
+  `~/.claude/cache/`); any other path is skipped.
+- **Regexes from config.** `contextPrep.siblingNameRegex`,
+  `nPlusOne.extraCallPatterns` and `nPlusOne.dataAccessReceivers` are refused
+  when invalid, over 500 characters or prone to catastrophic backtracking, and
+  the built-in default is used instead. `blocking.fileExtensions` entries
+  now match literally; a `c++` entry used to crash two hooks.
+- **`install.sh` overwrote other hooks.** It replaced the whole `hooks`
+  block of `~/.claude/settings.json` and symlinked all of `~/.claude/hooks`.
+  It now adds only this plugin's entries (`scripts/settings-hooks.js`;
+  running it again adds nothing) and links `~/.claude/design-patterns/hooks`
+  instead. A pre-1.1 install is migrated: the old link is removed and the
+  user's own `~/.claude/hooks` is restored from its backup.
+- **`uninstall.sh` removed other hooks.** It dropped any hook whose command
+  contained `pattern-`. It now removes only commands that run this plugin's
+  hook scripts from its install paths.
+- `install.sh` no longer splices paths into inline JavaScript, which broke
+  when `$HOME` contained a `'`.
+- **Parser install supply chain.** `scripts/install-parsers.js` runs
+  `npm ci --ignore-scripts` against a committed lockfile, which pins the exact
+  version and its sha512 integrity and runs no package scripts. It only
+  installs into or deletes a directory that is missing, empty or a previous
+  parser install, and `--dir` without a value is an error.
+- `hooks/__tests__/security.js` covers all of the above and is part of
+  `npm test`.
+
 ## [1.0.0] — 2026-04-26
 
 - GoF catalog skill (22 patterns, refactoring.guru) and Pattern Check

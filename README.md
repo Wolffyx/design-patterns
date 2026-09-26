@@ -78,11 +78,18 @@ cd ~/design-patterns
 ```
 
 What it does:
-- backs up any existing `~/.claude/skills/design-patterns` and `~/.claude/hooks`
-  to `~/.claude/backups/design-patterns-<ts>/`,
-- symlinks the repo's `skills/design-patterns/` and `hooks/` into `~/.claude/`,
-- merges the hooks block from `settings.example.json` into
-  `~/.claude/settings.json` (substituting `$HOME` with the user's home).
+- backs up any existing real `~/.claude/skills/design-patterns` and
+  `~/.claude/design-patterns/hooks` to `~/.claude/backups/design-patterns-<ts>/`,
+- symlinks the repo's `skills/design-patterns/` to
+  `~/.claude/skills/design-patterns` and `hooks/` to
+  `~/.claude/design-patterns/hooks` (your own `~/.claude/hooks` is left alone),
+- adds this plugin's hook entries from `settings.example.json` to
+  `~/.claude/settings.json` (with `$HOME` replaced by your home directory),
+  keeping every other hook; re-running it does not duplicate them,
+- migrates a pre-1.1 install, which linked all of `~/.claude/hooks`: the old
+  link is removed and your own directory is restored from its backup.
+
+`./uninstall.sh` reverses it and removes only this plugin's hook entries.
 
 Restart Claude Code afterwards.
 
@@ -166,6 +173,13 @@ node ~/design-patterns/scripts/install-parsers.js      # → ~/.claude/design-pa
 # plugin install: node ~/.claude/plugins/<…>/design-patterns/scripts/install-parsers.js
 # symlink install: ./install.sh --with-parsers
 ```
+
+The install uses `npm ci --ignore-scripts` against a committed lockfile
+(`scripts/parsers.lock.json`): the exact version and its sha512 integrity are
+checked, and no package scripts run. For a custom location, pass `--dir <path>`
+and export `DESIGN_PATTERNS_PARSERS_DIR=<path>` for Claude Code. The hooks load
+parsers only from that variable, the default directory or the plugin itself,
+never from project config.
 
 With the default `smells.parser: "auto"` the hooks pick them up
 automatically; `node scripts/install-parsers.js --check` verifies all seven
@@ -330,8 +344,8 @@ Read-only — never edits code.
 ## `analyze-log` CLI
 
 ```bash
-node ~/.claude/hooks/analyze-log.js --since 7d
-node ~/.claude/hooks/analyze-log.js --since 30d --format json
+node ~/.claude/design-patterns/hooks/analyze-log.js --since 7d
+node ~/.claude/design-patterns/hooks/analyze-log.js --since 30d --format json
 ```
 
 Outputs:
@@ -378,8 +392,23 @@ list. Highlights:
   `followLocalFunctions`, `lazyLoad`, `resolvers`, `extraCallPatterns` (regex
   sources for project-specific I/O), `dataAccessReceivers` (regex for
   receiver names), `crossFile.{enabled, maxDepth, timeBudgetMs, cachePath}`.
-- Backend: `smells.parser` (`auto` / `tree-sitter` / `regex`),
-  `smells.parserPath` (custom parser install directory).
+- Backend: `smells.parser` (`auto` / `tree-sitter` / `regex`). A custom parser
+  directory is set with the `DESIGN_PATTERNS_PARSERS_DIR` environment variable
+  only.
+
+**Project config is untrusted.** `.claude/pattern-check.config.json` arrives
+with the repository, so the hooks limit what it can do:
+
+- file paths (`log.path`, `log.blockStatsPath`, `log.smellLogPath`,
+  `sessionCache.path`, every `cachePath`) must resolve inside
+  `<project>/.claude/` after symlinks are followed (`sessionCache.path` may also
+  use `~/.claude/cache/`). Any other path is skipped, and nothing is logged there;
+- regex options (`contextPrep.siblingNameRegex`, `extraCallPatterns`,
+  `dataAccessReceivers`) are refused when invalid, over 500 characters or
+  prone to catastrophic backtracking (a repeated group that holds a
+  quantifier, such as `(a+)+`). The built-in default is used instead;
+- `blocking.fileExtensions` entries match literally;
+- nothing in it chooses code to load.
 
 `node hooks/analyze-log.js` reports, per smell, how often it was reported
 vs suppressed, and suggests which knob to loosen when a smell is suppressed
@@ -390,13 +419,14 @@ in ≥30% of ≥5 sightings.
 ## Tests
 
 ```bash
-npm test                 # smoke + golden + cross-file + dogfood + matrix (ephemeral sandboxes)
+npm test                 # smoke + golden + cross-file + dogfood + security + matrix (ephemeral sandboxes)
 npm run test:smoke       # 45 hook smoke tests, fast
 npm run test:golden      # 14 golden files: every smell, all 7 languages, clean files stay clean
 npm run test:golden:ast  # same files + AST-only fixtures on the tree-sitter backend
 npm run test:golden:update  # rewrite expected files after a detector change, then review the diff
 npm run test:crossfile   # one multi-file project per language: loop in one file, query in another
 npm run test:dogfood     # the hooks themselves: no nested if / deep nesting / else-after-return
+npm run test:security    # untrusted project config, symlinks, installers, parser install guard
 npm run test:matrix      # 16-case matrix against generated sandbox
 npm run parsers:install  # optional tree-sitter parsers (needed by test:golden:ast)
 npm run lint        # shellcheck install.sh uninstall.sh

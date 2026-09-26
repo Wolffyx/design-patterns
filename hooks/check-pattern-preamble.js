@@ -57,7 +57,8 @@ function exitAllow() { process.exit(0); }
 function appendBlockStat(cfg, record) {
     if (!cfg.log || !cfg.log.blockStatsPath) return;
     try {
-        const p = path.resolve(process.cwd(), cfg.log.blockStatsPath);
+        const p = shared.projectFile(cfg.log.blockStatsPath);
+        if (!p) return;
         fs.mkdirSync(path.dirname(p), { recursive: true });
         fs.appendFileSync(p, JSON.stringify(record) + '\n', 'utf8');
     } catch {
@@ -144,7 +145,7 @@ function callerCount(name, cfg, selfFile) {
 function isAlreadyInFamily(cfg, sessionId, filePath) {
     if (!cfg.sessionCache || !cfg.sessionCache.enabled) return false;
     if (!sessionId) return false;
-    const p = shared.expandHome(cfg.sessionCache.path);
+    const p = shared.cacheFile(cfg.sessionCache.path);
     if (!p || !fs.existsSync(p)) return false;
     try {
         const cache = JSON.parse(fs.readFileSync(p, 'utf8')) || {};
@@ -189,9 +190,7 @@ const fileName = path.basename(filePath);
 const sessionId = input.session_id || '';
 
 // extension filter
-const extOk = cfg.blocking.fileExtensions.some(ext =>
-    new RegExp('\\.' + ext.replace(/[.+*?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(filePath));
-if (!extOk) exitAllow();
+if (!shared.hasExtension(filePath, cfg.blocking.fileExtensions)) exitAllow();
 
 // resolve the source language — drives symbol detection and message wording
 const langId = shared.langIdForFile(filePath) || 'ts';

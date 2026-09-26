@@ -13,6 +13,7 @@
 'use strict';
 
 const { bodyText } = require('./_code-scan');
+const shared = require('./_pattern-shared');
 
 // Round-trips for sure. `query` / `execute` / `Exec` / `Query` need an
 // argument so a zero-arg Command.execute() never matches.
@@ -46,8 +47,10 @@ const DEFAULT_RECEIVERS = String.raw`(?:[A-Za-z_]\w*?(?:Repo|Repository|Dao|DAO|
 const NO_KNOWN = { functions: new Map(), receivers: new Map() };
 
 function buildMatchers(cfg) {
-    const extra = Array.isArray(cfg.extraCallPatterns) ? cfg.extraCallPatterns : [];
-    const receivers = cfg.dataAccessReceivers || DEFAULT_RECEIVERS;
+    // project config regexes: invalid or backtracking-prone ones are dropped
+    const extra = (Array.isArray(cfg.extraCallPatterns) ? cfg.extraCallPatterns : []).filter(src => shared.configRegExp(src));
+    const receivers = cfg.dataAccessReceivers && shared.configRegExp(cfg.dataAccessReceivers)
+        ? cfg.dataAccessReceivers : DEFAULT_RECEIVERS;
     return {
         high: new RegExp(HIGH_CALLS.concat(extra).join('|'), 'g'),
         receiver: new RegExp(String.raw`(?:^|[^\w$.])((?:this\.|self\.)?(?:[A-Za-z_$][\w$]*\.)*?${receivers})\.([A-Za-z_]\w*)\s*\(`, 'g'),

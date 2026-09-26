@@ -102,6 +102,6 @@ without editing any code.
 ## Notes
 
 - If `${CLAUDE_PLUGIN_ROOT}` is unset (skill running outside the plugin),
-  fall back to `~/.claude/hooks/` paths.
+  fall back to `~/.claude/design-patterns/hooks/` paths.
 - The smell detector reads the **on-disk** content of each file, so the
   report reflects the current working tree (no fetching from git history).

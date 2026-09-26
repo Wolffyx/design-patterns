@@ -36,8 +36,6 @@ const DEFAULT_SMELLS = {
     enabled: true,
     // 'auto' (tree-sitter when installed, else regex) | 'tree-sitter' | 'regex'
     parser: 'auto',
-    // where scripts/install-parsers.js put the parsers ('' = ~/.claude/design-patterns/parsers)
-    parserPath: '',
     // 'edited': report only findings on lines the Edit / MultiEdit wrote (or
     // whose class / function span it touched); 'file': the whole file
     scope: 'edited',
@@ -149,9 +147,7 @@ function anyBlocking(s) {
 
 /** Is this file one the hooks should look at (extension + excludes)? */
 function inScopeFile(filePath, cfg) {
-    const extOk = (cfg.blocking.fileExtensions || []).some(ext =>
-        new RegExp('\\.' + String(ext).replace(/[.+*?^${}()|[\]\\]/g, '\\$&') + '$', 'i').test(filePath));
-    if (!extOk) return false;
+    if (!shared.hasExtension(filePath, cfg.blocking.fileExtensions)) return false;
     return !(cfg.blocking.excludeGlobs || []).some(g => shared.matchesGlob(filePath, g));
 }
 
@@ -160,7 +156,9 @@ let parserHintShown = false;
 /** Scan model from the configured backend; tree-sitter falls back to regex. */
 async function buildScan(text, langId, filePath, s) {
     const wantAst = s.parser !== 'regex';
-    const ast = wantAst ? await tsScan.scan(text, langId, filePath, s.parserPath) : null;
+    // parser location: DESIGN_PATTERNS_PARSERS_DIR or ~/.claude/design-patterns/parsers only —
+    // never project config, which a cloned repo controls (it would pick the code `require`d)
+    const ast = wantAst ? await tsScan.scan(text, langId, filePath) : null;
     if (ast) return ast;
     if (s.parser === 'tree-sitter' && !parserHintShown) {
         parserHintShown = true;
@@ -240,7 +238,8 @@ function formatFinding(fileRel, f) {
 function logFindings(cfg, file, entries) {
     const log = cfg.log || {};
     if (log.enabled === false || !entries.length) return;
-    const p = path.resolve(process.cwd(), log.smellLogPath || '.claude/pattern-smell-log.jsonl');
+    const p = shared.projectFile(log.smellLogPath || '.claude/pattern-smell-log.jsonl');
+    if (!p) return;
     const ts = new Date().toISOString();
     const lines = entries.map(e => JSON.stringify({
         ts,

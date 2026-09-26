@@ -59,15 +59,18 @@ const blocking = report.filter(f => f.severity === 'block');
 if (!blocking.length) process.exit(0);
 
 const fileRel = filePath.replace(/\\/g, '/').replace(/^.*\/(apps|packages)\//, '$1/');
+// null when the configured path leaves <project>/.claude/ — then no stat is written
+const statsPath = shared.projectFile((cfg.log && cfg.log.blockStatsPath) || '.claude/pattern-block-stats.jsonl');
 try {
-    const p = path.resolve(process.cwd(), (cfg.log && cfg.log.blockStatsPath) || '.claude/pattern-block-stats.jsonl');
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.appendFileSync(p, JSON.stringify({
-        ts: new Date().toISOString(),
-        rule: 'smell-gate',
-        file: filePath.replace(/\\/g, '/'),
-        smells: blocking.map(f => `${f.smellId}:${f.line}`),
-    }) + '\n', 'utf8');
+    if (statsPath) {
+        fs.mkdirSync(path.dirname(statsPath), { recursive: true });
+        fs.appendFileSync(statsPath, JSON.stringify({
+            ts: new Date().toISOString(),
+            rule: 'smell-gate',
+            file: filePath.replace(/\\/g, '/'),
+            smells: blocking.map(f => `${f.smellId}:${f.line}`),
+        }) + '\n', 'utf8');
+    }
 } catch {
     // telemetry must never break the flow
 }

@@ -50,14 +50,14 @@ function overBudget(limitMs) {
 
 function loadSessionCache(cfg) {
     if (!cfg.sessionCache || !cfg.sessionCache.enabled) return {};
-    const p = shared.expandHome(cfg.sessionCache.path);
+    const p = shared.cacheFile(cfg.sessionCache.path);
     if (!p || !fs.existsSync(p)) return {};
     try { return JSON.parse(fs.readFileSync(p, 'utf8')) || {}; } catch { return {}; }
 }
 
 function writeSessionCache(cfg, cache) {
     if (!cfg.sessionCache || !cfg.sessionCache.enabled) return;
-    const p = shared.expandHome(cfg.sessionCache.path);
+    const p = shared.cacheFile(cfg.sessionCache.path);
     if (!p) return;
     try {
         fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -96,7 +96,9 @@ function isRegularFile(p) {
 function listSiblings(filePath, cfg) {
     const cap = cfg.contextPrep.maxSiblings || 6;
     // case-insensitive: snake_case languages name files stripe_adapter.py / base.go
-    const nameRe = new RegExp(cfg.contextPrep.siblingNameRegex || '.', 'i');
+    // project config regex: refused when invalid or backtracking-prone → built-in default
+    const nameRe = shared.configRegExp(cfg.contextPrep.siblingNameRegex || '.', 'i') ||
+        new RegExp(shared.DEFAULT_CONFIG.contextPrep.siblingNameRegex, 'i');
     const dir = path.dirname(filePath);
     const parent = path.dirname(dir);
     const dirs = [dir];
@@ -122,7 +124,7 @@ function listSiblings(filePath, cfg) {
 
 function recentDecisionsForFile(filePath, cfg) {
     const n = cfg.contextPrep.recentDecisionCount || 3;
-    const logPath = path.resolve(process.cwd(), cfg.log.path);
+    const logPath = shared.projectFile(cfg.log.path);
     const tail = shared.tailLogLines(logPath, 500);
     const entries = shared.parseLogEntries(tail);
     const normalized = filePath.replace(/\\/g, '/');
@@ -137,7 +139,7 @@ function recentDecisionsForFile(filePath, cfg) {
 
 function familyHealthDegraded(filePath, family, cfg) {
     if (!family || !family.matched) return false;
-    const logPath = path.resolve(process.cwd(), cfg.log.path);
+    const logPath = shared.projectFile(cfg.log.path);
     const tail = shared.tailLogLines(logPath, 800);
     const entries = shared.parseLogEntries(tail);
     const familyGlob = family.matched.glob;
@@ -189,7 +191,7 @@ function readExistingFile(filePath) {
 function recentExtendOnFile(filePath, cfg) {
     const cutoffDays = cfg.sessionCache.alreadyInFamilyDays || 30;
     const cutoff = Date.now() - cutoffDays * 24 * 3600 * 1000;
-    const logPath = path.resolve(process.cwd(), cfg.log.path);
+    const logPath = shared.projectFile(cfg.log.path);
     const tail = shared.tailLogLines(logPath, 800);
     const entries = shared.parseLogEntries(tail);
     const normalized = filePath.replace(/\\/g, '/');
@@ -252,9 +254,7 @@ function main() {
     if (!filePath) process.exit(0);
 
     // extension filter
-    const extOk = cfg.blocking.fileExtensions.some(ext =>
-        new RegExp('\\.' + ext + '$', 'i').test(filePath));
-    if (!extOk) process.exit(0);
+    if (!shared.hasExtension(filePath, cfg.blocking.fileExtensions)) process.exit(0);
 
     // exclude tests / .d.ts / type files
     if (cfg.blocking.excludeGlobs.some(g => shared.matchesGlob(filePath, g))) process.exit(0);

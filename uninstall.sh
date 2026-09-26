@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # uninstall.sh — reverse install.sh.
 #
-# - removes ~/.claude/skills/design-patterns and ~/.claude/hooks if they are
-#   symlinks pointing inside this repo,
+# - removes ~/.claude/skills/design-patterns, ~/.claude/design-patterns/hooks
+#   and the pre-1.1 ~/.claude/hooks link if they are symlinks pointing inside
+#   this repo,
 # - restores the most-recent ~/.claude/backups/design-patterns-* if present,
-# - strips pattern-related entries from ~/.claude/settings.json hooks block.
+# - removes this plugin's hook entries from ~/.claude/settings.json — only
+#   commands that run our hook scripts from our install paths; every other
+#   hook is kept (scripts/settings-hooks.js).
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_DIR="$HOME/.claude"
 SKILL_LINK="$CLAUDE_DIR/skills/design-patterns"
-HOOKS_LINK="$CLAUDE_DIR/hooks"
+HOOKS_LINK="$CLAUDE_DIR/design-patterns/hooks"
+LEGACY_HOOKS_LINK="$CLAUDE_DIR/hooks"
 SETTINGS="$CLAUDE_DIR/settings.json"
 TS="$(date +%Y%m%d-%H%M%S)"
 
@@ -34,6 +38,8 @@ remove_symlink() {
 
 remove_symlink "$SKILL_LINK" "$REPO"
 remove_symlink "$HOOKS_LINK" "$REPO"
+remove_symlink "$LEGACY_HOOKS_LINK" "$REPO"
+rmdir "$CLAUDE_DIR/design-patterns" 2>/dev/null || true
 
 # remove command symlinks that point into this repo
 if [ -d "$CLAUDE_DIR/commands" ]; then
@@ -57,9 +63,15 @@ if [ -n "$LATEST_BACKUP" ]; then
     mv "$LATEST_BACKUP/skills-design-patterns" "$SKILL_LINK"
     echo "▸ restored $SKILL_LINK from $LATEST_BACKUP"
   fi
-  if [ -d "$LATEST_BACKUP/hooks" ] && [ ! -e "$HOOKS_LINK" ]; then
-    mv "$LATEST_BACKUP/hooks" "$HOOKS_LINK"
+  if [ -d "$LATEST_BACKUP/design-patterns-hooks" ] && [ ! -e "$HOOKS_LINK" ]; then
+    mkdir -p "$(dirname "$HOOKS_LINK")"
+    mv "$LATEST_BACKUP/design-patterns-hooks" "$HOOKS_LINK"
     echo "▸ restored $HOOKS_LINK from $LATEST_BACKUP"
+  fi
+  # pre-1.1 installs backed up the user's own ~/.claude/hooks under this name
+  if [ -d "$LATEST_BACKUP/hooks" ] && [ ! -e "$LEGACY_HOOKS_LINK" ]; then
+    mv "$LATEST_BACKUP/hooks" "$LEGACY_HOOKS_LINK"
+    echo "▸ restored $LEGACY_HOOKS_LINK from $LATEST_BACKUP"
   fi
   rmdir "$LATEST_BACKUP" 2>/dev/null || true
 fi
@@ -68,38 +80,8 @@ fi
 
 if [ -f "$SETTINGS" ]; then
   cp "$SETTINGS" "$SETTINGS.bak-$TS"
-  node - <<'NODE'
-const fs = require('fs');
-const path = require('path');
-const settingsPath = process.env.HOME + '/.claude/settings.json';
-const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-
-const PATTERN_RE = /(pattern-|session-start-reminder|user-prompt-reminder)/i;
-
-function stripGroup(arr) {
-  if (!Array.isArray(arr)) return arr;
-  return arr.map(group => {
-    if (!group || !Array.isArray(group.hooks)) return group;
-    const filtered = group.hooks.filter(h =>
-      !(h && typeof h.command === 'string' && PATTERN_RE.test(h.command)));
-    if (filtered.length === 0) return null;
-    return { ...group, hooks: filtered };
-  }).filter(Boolean);
-}
-
-if (settings.hooks && typeof settings.hooks === 'object') {
-  for (const evt of Object.keys(settings.hooks)) {
-    settings.hooks[evt] = stripGroup(settings.hooks[evt]);
-    if (Array.isArray(settings.hooks[evt]) && settings.hooks[evt].length === 0) {
-      delete settings.hooks[evt];
-    }
-  }
-  if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
-}
-
-fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8');
-NODE
-  echo "▸ stripped pattern hooks from $SETTINGS (backup: $SETTINGS.bak-$TS)"
+  node "$REPO/scripts/settings-hooks.js" remove "$SETTINGS" "$REPO/settings.example.json"
+  echo "▸ removed design-patterns hooks from $SETTINGS, other hooks kept (backup: $SETTINGS.bak-$TS)"
 fi
 
 cat <<EOF

@@ -29,6 +29,7 @@
 const fs = require('fs');
 const path = require('path');
 const langs = require('./_languages');
+const shared = require('./_pattern-shared');
 const { scanBlocks, extractFunctions, extractClasses, maskCode } = require('./_code-scan');
 const { localIoFunctions } = require('./_io-calls');
 
@@ -49,6 +50,7 @@ function mtimeOf(p) {
 }
 
 function readText(p) {
+    if (!p) return '';
     try { return fs.readFileSync(p, 'utf8'); } catch { return ''; }
 }
 
@@ -76,7 +78,7 @@ function ancestorWith(ctx, start, marker) {
 
 function fileIndex(ctx) {
     if (ctx.files) return ctx.files;
-    const cachePath = path.resolve(ctx.root, '.claude', 'cache', 'pattern-file-index.json');
+    const cachePath = shared.projectFile('.claude/cache/pattern-file-index.json');
     let cached = null;
     try { cached = JSON.parse(readText(cachePath) || 'null'); } catch { cached = null; }
     const fresh = cached && cached.root === ctx.root && Date.now() - cached.ts < FILE_INDEX_TTL_MS;
@@ -107,6 +109,7 @@ function visitDir(ctx, dir, stack, out) {
 }
 
 function writeJson(p, data) {
+    if (!p) return;
     try {
         fs.mkdirSync(path.dirname(p), { recursive: true });
         fs.writeFileSync(p, JSON.stringify(data), 'utf8');
@@ -462,7 +465,8 @@ function crossFileIo(scan, filePath, cfg, matchers) {
     const opts = { maxDepth: 2, timeBudgetMs: 400, cachePath: '.claude/cache/pattern-io-index.json', ...(cfg.crossFile || {}) };
     const root = path.resolve(process.cwd());
     const file = path.resolve(filePath);
-    const cachePath = path.resolve(root, opts.cachePath);
+    // null when the configured path leaves <project>/.claude/ — the cache is then skipped
+    const cachePath = shared.projectFile(opts.cachePath);
     let disk = null;
     try { disk = JSON.parse(readText(cachePath) || 'null'); } catch { disk = null; }
     const ctx = {

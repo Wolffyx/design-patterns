@@ -1,0 +1,8 @@
+{
+  "name": "design-patterns-parsers",
+  "private": true,
+  "description": "Optional tree-sitter parsers for the design-patterns hooks. Installed by scripts/install-parsers.js with npm ci --ignore-scripts against parsers.lock.json.",
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "0.3.1"
+  }
+}

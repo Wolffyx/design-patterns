@@ -6,7 +6,7 @@ Run a project-wide design-pattern review.
 
 First resolve the hooks directory: if the environment variable
 `CLAUDE_PLUGIN_ROOT` is set, use `HOOKS="$CLAUDE_PLUGIN_ROOT/hooks"`; otherwise
-use `HOOKS="$HOME/.claude/hooks"` (the symlink-install location). Use `$HOOKS`
+use `HOOKS="$HOME/.claude/design-patterns/hooks"` (the symlink-install location). Use `$HOOKS`
 in the commands below.
 
 1. Run `node "$HOOKS/analyze-log.js" --format json --since 30d`

@@ -88,16 +88,16 @@ const toolInput = input.tool_input || {};
 const filePath = toolInput.file_path || '';
 if (!filePath) process.exit(0);
 
-const extOk = cfg.blocking.fileExtensions.some(ext =>
-    new RegExp('\\.' + ext + '$', 'i').test(filePath));
-if (!extOk) process.exit(0);
+if (!shared.hasExtension(filePath, cfg.blocking.fileExtensions)) process.exit(0);
 
 if (cfg.blocking.excludeGlobs.some(g => shared.matchesGlob(filePath, g))) process.exit(0);
 
 const preambles = shared.findAllPreamblesInRecentTurn(input.transcript_path);
 if (preambles.length === 0) process.exit(0);
 
-const logPath = path.resolve(process.cwd(), cfg.log.path);
+// null when the configured path leaves <project>/.claude/ — then nothing is logged
+const logPath = shared.projectFile(cfg.log.path);
+if (!logPath) process.exit(0);
 try {
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
 } catch {
