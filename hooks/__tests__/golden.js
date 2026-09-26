@@ -9,8 +9,13 @@
  * Any new finding, lost finding or moved line fails the run, so detector
  * changes show up as a reviewable diff of the expected files.
  *
- *   node hooks/__tests__/golden.js            # verify
- *   node hooks/__tests__/golden.js --update   # rewrite expected files, then review the diff
+ *   node hooks/__tests__/golden.js                        # verify (regex backend)
+ *   node hooks/__tests__/golden.js --parser tree-sitter   # verify the AST backend against the same files
+ *   node hooks/__tests__/golden.js --update               # rewrite expected files, then review the diff
+ *
+ * Both backends must produce identical findings, so one expected file serves
+ * both. `--parser tree-sitter` fails when the parsers are not installed
+ * (scripts/install-parsers.js) instead of silently testing regex twice.
  *
  * Runs the detectors in-process with default config and whole-file scope.
  */
@@ -20,19 +25,33 @@
 const fs = require('fs');
 const path = require('path');
 const smells = require('../_smells');
+const tsScan = require('../_ts-scan');
 
 const DIR = path.join(__dirname, 'golden');
-const UPDATE = process.argv.includes('--update');
 
-const s = smells.mergeSmells({ scope: 'file' });
+const UPDATE = process.argv.includes('--update');
+const PARSER = process.argv.includes('--parser') ? process.argv[process.argv.indexOf('--parser') + 1] : 'regex';
+
+const s = smells.mergeSmells({ scope: 'file', parser: PARSER });
 let pass = 0;
 let fail = 0;
 
-const fixtures = fs.readdirSync(DIR).filter(f => !f.endsWith('.expected.json')).sort();
-for (const file of fixtures) {
-    const full = path.join(DIR, file);
+main().then(() => process.exit(fail === 0 ? 0 : 1), e => {
+    process.stdout.write(`  ✗ ${e.stack || e}\n`);
+    process.exit(1);
+});
+
+async function main() {
+if (PARSER === 'tree-sitter' && !tsScan.available(s.parserPath)) {
+    throw new Error('tree-sitter parsers not installed — run: node scripts/install-parsers.js');
+}
+// golden-ast/: shapes only the syntax tree can see (brace-less bodies, braces in literals)
+const dirs = PARSER === 'tree-sitter' ? [DIR, path.join(__dirname, 'golden-ast')] : [DIR];
+const fixtures = dirs.flatMap(d => fs.readdirSync(d).filter(f => !f.endsWith('.expected.json')).sort().map(f => path.join(d, f)));
+for (const full of fixtures) {
+    const file = path.relative(__dirname, full);
     const text = fs.readFileSync(full, 'utf8');
-    const { report } = smells.select(smells.runAll(text, full, s), text, null, s);
+    const { report } = smells.select(await smells.runAll(text, full, s), text, null, s);
     const actual = report.map(f => ({ smellId: f.smellId, line: f.line }));
     const expectedPath = full + '.expected.json';
 
@@ -73,5 +92,5 @@ for (const file of fixtures) {
     fail++;
 }
 
-if (!UPDATE) process.stdout.write(`\nGolden tests: ${pass} passed, ${fail} failed\n`);
-process.exit(fail === 0 ? 0 : 1);
+if (!UPDATE) process.stdout.write(`\nGolden tests (${PARSER}): ${pass} passed, ${fail} failed\n`);
+}

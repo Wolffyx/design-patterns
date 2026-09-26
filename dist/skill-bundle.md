@@ -258,7 +258,9 @@ they differ from the 50-line judgement rule: `references/hook-protocol.md`.
   a real path.
 
 **`[pattern-smell]` lines** (after the write, advisory). They cover only the
-lines your edit touched. Fix the smell in the same change when it is yours
+lines your edit touched. An N+1 finding may point into another file
+(`does .findUnique(, src/user-store.ts:3`): add a batch method along that
+chain and call it once, before the loop. Fix the smell in the same change when it is yours
 to fix. When it is intentional, add `// pattern-smell: ignore <smell-id>`
 (`#` in Python) with a reason on the line or the line above. Don't
 suppress to make the message go away.
@@ -5379,8 +5381,19 @@ let customers = sqlx::query_as!(Customer,
 | Confidence | Evidence |
 |---|---|
 | high | a known driver / ORM / HTTP API: `.findUnique(`, `.findById(`, `cursor.execute(sql`, `.objects.get(`, `session.get(Model`, `db.QueryRowContext(`, `.FirstOrDefaultAsync(`, `fetch(`, `requests.get(`, `sqlx::query!`, … plus `nPlusOne.extraCallPatterns` |
-| medium | any method on a data-access receiver (`userRepo.x(`, `this.apiClient.x(`, `db.x(`; override with `nPlusOne.dataAccessReceivers`); a same-file function that (transitively) does I/O; a lazy relation read on ORM rows fetched without eager loading; a resolver querying per parent |
+| medium | any method on a data-access receiver (`userRepo.x(`, `this.apiClient.x(`, `db.x(`; override with `nPlusOne.dataAccessReceivers`); a function that (transitively) does I/O — in this file **or another one**: imported functions, namespace calls (`users.load(`, `users::load(`), methods of injected services (`this.userService.getUser(`); a lazy relation read on ORM rows fetched without eager loading; a resolver querying per parent |
 | low | a sequential `await` with no recognised I/O call — reported as the separate `await-in-loop` smell (`nPlusOne.flagAwaitInLoop`) |
+
+A cross-file finding names where the round-trip really happens:
+
+```
+N+1: `this.userService.getUser()` (does `.findUnique(`, src/user-store.ts:3) once per `id` (loop line 9)
+```
+
+Fix it at the call site: add a batch method along the chain
+(`UserStore.byIds(ids)` → `UserService.getUsers(ids)`), call it once before
+the loop, and look results up in a map. Imports are followed up to
+`nPlusOne.crossFile.maxDepth` (2) files deep.
 
 Each finding says which case it is: **per-item** (batch it),
 **loop-invariant** (hoist it), **N writes** (bulk write), **concurrent**

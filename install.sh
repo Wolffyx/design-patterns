@@ -24,16 +24,21 @@ set -euo pipefail
 REPO_DEFAULT_DIR="${HOME}/design-patterns"
 REPO_GIT_URL="${CLAUDE_DESIGN_PATTERNS_REPO:-https://github.com/wolffyx/design-patterns.git}"
 AUTO_CLONE=0
+WITH_PARSERS=0
 
 for arg in "$@"; do
   case "$arg" in
     --auto-clone) AUTO_CLONE=1 ;;
+    --with-parsers) WITH_PARSERS=1 ;;
     -h|--help)
       cat <<EOF
-Usage: install.sh [--auto-clone]
+Usage: install.sh [--auto-clone] [--with-parsers]
 
-  --auto-clone   git-clone the repo into ${REPO_DEFAULT_DIR} if this script
-                 is being run from outside a checkout (curl|bash mode).
+  --auto-clone     git-clone the repo into ${REPO_DEFAULT_DIR} if this script
+                   is being run from outside a checkout (curl|bash mode).
+  --with-parsers   also install the optional tree-sitter parsers (~22 MB,
+                   npm) into ~/.claude/design-patterns/parsers for more
+                   precise smell detection.
 
 Environment:
   CLAUDE_DESIGN_PATTERNS_REPO   override the default git URL.
@@ -157,6 +162,14 @@ fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf8')
 NODE
 
 echo "▸ merged hooks block into $SETTINGS (backup: $SETTINGS.bak-$TS)"
+
+# --- optional tree-sitter parsers ---------------------------------------
+
+if [ "$WITH_PARSERS" -eq 1 ]; then
+  node "$REPO/scripts/install-parsers.js" || echo "! parser install failed — hooks keep using regex scanning" >&2
+else
+  echo "▸ tree-sitter parsers not installed (optional): node '$REPO/scripts/install-parsers.js'"
+fi
 
 cat <<EOF
 

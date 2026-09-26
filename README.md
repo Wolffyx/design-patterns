@@ -20,8 +20,16 @@ language-native forms, and the Gang of Four catalog) plus **Pattern Check
   functions, N+1). Advisory by default and scoped to the lines each edit
   touches; any of them can be made **blocking** per project.
 - N+1 detection that grades evidence (known ORM / HTTP API, data-access
-  receiver, same-file I/O helper, lazy relation load, GraphQL resolver) and
-  says which fix applies: batch, hoist, bulk write, eager load.
+  receiver, I/O helper, lazy relation load, GraphQL resolver), says which fix
+  applies (batch, hoist, bulk write, eager load), and **follows calls into
+  other files**: `this.userService.getUser(id)` in a loop is flagged when
+  `getUser` two files away runs the query.
+- Optional **tree-sitter backend** (one opt-in WASM package, no native build):
+  exact syntax trees for all seven languages — sees brace-less nested ifs,
+  masks raw strings / regex literals exactly. Falls back to the built-in
+  regex scanner when not installed.
+- The hooks pass their own rules: a dogfood test fails the build on any
+  nested `if`, deep nesting or `else` after `return` in this repo.
 - Cross-file duplicate detector — flags shared shapes across files as strong
   Strategy/Visitor candidates.
 - `PreToolUse` hook that **blocks** Write/Edit/MultiEdit on TypeScript,
@@ -147,6 +155,32 @@ cp ~/design-patterns/pattern-check.config.example.json .claude/pattern-check.con
 The config file's `$schema` ref gives editor autocomplete for every tunable
 in [`pattern-check.schema.json`](pattern-check.schema.json).
 
+### Optional: tree-sitter parsers
+
+The smell detectors ship with a zero-dependency regex scanner. For exact
+syntax trees, install the parsers once per machine (~22 MB, WASM, no native
+build):
+
+```bash
+node ~/design-patterns/scripts/install-parsers.js      # → ~/.claude/design-patterns/parsers
+# plugin install: node ~/.claude/plugins/<…>/design-patterns/scripts/install-parsers.js
+# symlink install: ./install.sh --with-parsers
+```
+
+With the default `smells.parser: "auto"` the hooks pick them up
+automatically; `node scripts/install-parsers.js --check` verifies all seven
+grammars, `--uninstall` removes them. What changes with them:
+
+| | regex (built in) | tree-sitter |
+|---|---|---|
+| `if (a) if (b) x();`, brace-less loops | missed | nested-if / N+1 found |
+| braces inside raw strings, regex literals, C# verbatim strings | mostly handled | exact |
+| function boundaries, parameters with nested parens / generics | heuristic | exact |
+| cost per edit | ~5–50 ms | +~70 ms (WASM load) |
+
+Both backends produce identical results on the golden test files; the AST
+backend has extra golden files for what only it can see.
+
 ---
 
 ## Hooks
@@ -213,8 +247,30 @@ lines the edit wrote, or the class / function it touched
 
 | smellId         | Trigger | Suggests |
 |-----------------|---------|----------|
-| `n-plus-one`    | I/O inside a `for` / `forEach` / `map` / comprehension, graded **high** (known ORM / driver / HTTP API) or **medium** (data-access receiver, same-file I/O helper, lazy relation load on un-eager-loaded ORM rows, GraphQL resolver per parent). Classified as per-item, loop-invariant, N writes, concurrent-but-still-N, or nested N×M. `while` loops (pagination / polling) and small literal loops are skipped. | batch + map lookup, hoist, bulk write, eager load, DataLoader |
+| `n-plus-one`    | I/O inside a `for` / `forEach` / `map` / comprehension, graded **high** (known ORM / driver / HTTP API) or **medium** (data-access receiver, I/O helper in this file *or another* — imported functions, namespaces, injected services —, lazy relation load on un-eager-loaded ORM rows, GraphQL resolver per parent). Classified as per-item, loop-invariant, N writes, concurrent-but-still-N, or nested N×M. `while` loops (pagination / polling) and small literal loops are skipped. | batch + map lookup, hoist, bulk write, eager load, DataLoader |
 | `await-in-loop` | sequential `await` in a loop with no recognised I/O call (low confidence) | `Promise.all` / `gather` / `WhenAll` (bounded) when independent |
+
+### Cross-file N+1
+
+The N+1 detector resolves what the edited file imports and indexes those
+files for I/O (up to `nPlusOne.crossFile.maxDepth` = 2 files deep, within
+`timeBudgetMs` = 400 ms, cached by mtime in `.claude/cache/pattern-io-index.json`):
+
+```
+[pattern-smell] src/report.ts:10 N+1: `this.userService.getUser()` (does `.findUnique(`, src/user-store.ts:3) once per `id` (loop line 9)
+```
+
+| Language | Follows |
+|---|---|
+| TypeScript | relative `import` / `require` (named, default, `* as ns`), constructor-injected / `new`-assigned fields |
+| Python | `from x import y`, `import x.y as z`, relative imports, `self.x = Service()` / annotated fields |
+| Go | module packages (via `go.mod`), same-package files, struct fields of package types |
+| Java | `import a.b.C`, same-package classes, fields / params typed with a class |
+| C# | fields typed with a class or interface (`IUserService` → `UserService.cs`) |
+| Rust | `use crate::…` / `super::` / `self::` modules and items, typed fields |
+| C++ | `#include "x.h"` → `x.cpp`, member fields (`svc_->get(`) |
+
+Static and best-effort: no type inference, no tsconfig path aliases.
 
 ### Blocking a smell
 
@@ -321,7 +377,9 @@ list. Highlights:
   `flagAwaitInLoop`, `includeWhileLoops`, `smallLoopMax`,
   `followLocalFunctions`, `lazyLoad`, `resolvers`, `extraCallPatterns` (regex
   sources for project-specific I/O), `dataAccessReceivers` (regex for
-  receiver names).
+  receiver names), `crossFile.{enabled, maxDepth, timeBudgetMs, cachePath}`.
+- Backend: `smells.parser` (`auto` / `tree-sitter` / `regex`),
+  `smells.parserPath` (custom parser install directory).
 
 `node hooks/analyze-log.js` reports, per smell, how often it was reported
 vs suppressed, and suggests which knob to loosen when a smell is suppressed
@@ -332,11 +390,15 @@ in ≥30% of ≥5 sightings.
 ## Tests
 
 ```bash
-npm test            # smoke + golden + matrix (75 cases, ephemeral sandbox)
-npm run test:smoke  # 45 hook smoke tests, fast
-npm run test:golden # 14 golden files: every smell, all 7 languages, clean files stay clean
+npm test                 # smoke + golden + cross-file + dogfood + matrix (ephemeral sandboxes)
+npm run test:smoke       # 45 hook smoke tests, fast
+npm run test:golden      # 14 golden files: every smell, all 7 languages, clean files stay clean
+npm run test:golden:ast  # same files + AST-only fixtures on the tree-sitter backend
 npm run test:golden:update  # rewrite expected files after a detector change, then review the diff
-npm run test:matrix # 16-case matrix against generated sandbox
+npm run test:crossfile   # one multi-file project per language: loop in one file, query in another
+npm run test:dogfood     # the hooks themselves: no nested if / deep nesting / else-after-return
+npm run test:matrix      # 16-case matrix against generated sandbox
+npm run parsers:install  # optional tree-sitter parsers (needed by test:golden:ast)
 npm run lint        # shellcheck install.sh uninstall.sh
 npm run bundle      # regenerate dist/skill-bundle.md after editing references
 ```
@@ -345,7 +407,9 @@ All suites are self-contained — they build a temp sandbox in
 `os.tmpdir()` and never touch a real project. Pass `--cwd /path` to
 `run-matrix.js` to opt-in to running against your own codebase.
 
-CI runs all three on every push; a stale `dist/skill-bundle.md` fails the build.
+CI runs everything on every push, then installs the parsers and repeats
+golden, cross-file and dogfood on the tree-sitter backend; a stale
+`dist/skill-bundle.md` fails the build.
 
 ---
 
@@ -374,9 +438,8 @@ Results land in `evals/results/` (git-ignored). Runs cost model usage.
 
 ## Roadmap
 
-- Optional tree-sitter backend (opt-in dependency) to replace the regex
-  scanner where precision matters.
-- Cross-file N+1: follow I/O helpers across imports, not only within a file.
+- tsconfig / jsconfig path aliases and workspace packages for cross-file resolution.
+- Type-aware receiver resolution on the tree-sitter backend (locals, return types).
 - Windows install (`install.ps1`).
 
 ---

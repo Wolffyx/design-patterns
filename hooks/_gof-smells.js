@@ -59,48 +59,48 @@ function countCases(body, arrows) {
     return { n, cases };
 }
 
-function detectSwitchOnType(scan, minCases) {
-    const findings = [];
-    const { langId, masked, text } = scan;
-    const finding = (line, n, what, cases) => ({
+function switchFinding(line, n, what, cases) {
+    return {
         smellId: 'switch-on-type',
         line,
         message: `switch-on-type (${n} cases on ${what})`,
         suggest: 'Strategy or State',
         refSlug: 'strategy',
         signature: `${what}|${cases.slice().sort().join(',')}`,
-    });
+    };
+}
 
-    if (langId === 'py') {
-        const re = new RegExp(`^match\\s+[\\w.]*\\.${DISCRIMINATOR}\\s*:$`);
-        for (const e of scan.entries) {
-            const m = re.exec(e.head);
-            if (!m) continue;
-            const body = bodyText(scan, e);
-            if (hasExhaustiveMarker(body)) continue;
-            const cases = body.split('\n').filter(l => /^case\b/.test(l)).map(l => l.replace(/^case\s+|:.*$/g, ''));
-            if (cases.length >= minCases) findings.push(finding(e.line, cases.length, `\`.${m[1]}\``, cases));
-        }
-        return findings;
-    }
-    if (langId === 'rust') return findings; // `match` is compiler-checked exhaustive
+function pySwitchOnType(scan, minCases) {
+    const re = new RegExp(`^match\\s+[\\w.]*\\.${DISCRIMINATOR}\\s*:$`);
+    return scan.entries
+        .map(e => ({ e, m: re.exec(e.head), body: bodyText(scan, e) }))
+        .filter(x => x.m && !hasExhaustiveMarker(x.body))
+        .map(x => ({ ...x, cases: x.body.split('\n').filter(l => /^case\b/.test(l)).map(l => l.replace(/^case\s+|:.*$/g, '')) }))
+        .filter(x => x.cases.length >= minCases)
+        .map(x => switchFinding(x.e.line, x.cases.length, `\`.${x.m[1]}\``, x.cases));
+}
 
-    const patterns = [
-        [new RegExp(`\\bswitch\\s*\\(?\\s*[\\w.]*\\.${DISCRIMINATOR}\\s*\\)?\\s*\\{`, 'g'), m => `\`.${m[1]}\``, false],
-        [/\bswitch\s+(?:\w+\s*:=\s*)?[\w.]+\.\(type\)\s*\{/g, () => 'a Go type switch', false],
-        [new RegExp(`[\\w.]+\\.${DISCRIMINATOR}\\s+switch\\s*\\{`, 'g'), m => `\`.${m[1]}\``, true],
-    ];
-    for (const [re, what, arrows] of patterns) {
-        let m;
-        while ((m = re.exec(masked)) !== null) {
+const SWITCH_SHAPES = [
+    [new RegExp(`\\bswitch\\s*\\(?\\s*[\\w.]*\\.${DISCRIMINATOR}\\s*\\)?\\s*\\{`, 'g'), m => `\`.${m[1]}\``, false],
+    [/\bswitch\s+(?:\w+\s*:=\s*)?[\w.]+\.\(type\)\s*\{/g, () => 'a Go type switch', false],
+    [new RegExp(`[\\w.]+\\.${DISCRIMINATOR}\\s+switch\\s*\\{`, 'g'), m => `\`.${m[1]}\``, true],
+];
+
+function braceSwitchOnType(scan, minCases) {
+    const { masked, text } = scan;
+    return SWITCH_SHAPES
+        .flatMap(([re, what, arrows]) => [...masked.matchAll(re)].map(m => {
             const open = m.index + m[0].length - 1;
             const close = balancedEnd(masked, open);
-            if (hasExhaustiveMarker(text.slice(open, close))) continue;
-            const { n, cases } = countCases(masked.slice(open + 1, close), arrows);
-            if (n >= minCases) findings.push(finding(lineOf(masked, m.index), n, what(m), cases));
-        }
-    }
-    return findings;
+            return { m, what, open, close, ...countCases(masked.slice(open + 1, close), arrows) };
+        }))
+        .filter(x => x.n >= minCases && !hasExhaustiveMarker(text.slice(x.open, x.close)))
+        .map(x => switchFinding(lineOf(masked, x.m.index), x.n, x.what(x.m), x.cases));
+}
+
+function detectSwitchOnType(scan, minCases) {
+    if (scan.langId === 'rust') return []; // `match` is compiler-checked exhaustive
+    return scan.langId === 'py' ? pySwitchOnType(scan, minCases) : braceSwitchOnType(scan, minCases);
 }
 
 // --- instanceof-chain ------------------------------------------------------------
@@ -174,22 +174,23 @@ const CONSTRUCTION = {
     rust: [/\b([A-Z]\w*)::new\s*\(/g],
 };
 
+/** Python `class Foo(Base):` looks like a call to Base — not a construction. */
+function isClassHeader(masked, idx) {
+    const lineStart = masked.lastIndexOf('\n', idx) + 1;
+    return /^\s*class\s/.test(masked.slice(lineStart, idx + 1));
+}
+
 function detectRepeatedNew(scan, minOccurrences) {
     const counts = {};
     const firstLine = {};
-    for (const re of CONSTRUCTION[scan.langId] || CONSTRUCTION.ts) {
-        re.lastIndex = 0;
-        let m;
-        while ((m = re.exec(scan.masked)) !== null) {
-            const name = m[1];
-            if (NOT_FACTORY_WORTHY.test(name)) continue;
-            if (scan.langId === 'py') {
-                const lineStart = scan.masked.lastIndexOf('\n', m.index) + 1;
-                if (/^\s*class\s/.test(scan.masked.slice(lineStart, m.index + 1))) continue;
-            }
-            counts[name] = (counts[name] || 0) + 1;
-            if (firstLine[name] === undefined) firstLine[name] = lineOf(scan.masked, m.index + m[0].indexOf(name));
-        }
+    const constructions = (CONSTRUCTION[scan.langId] || CONSTRUCTION.ts)
+        .flatMap(re => [...scan.masked.matchAll(new RegExp(re.source, re.flags))])
+        .filter(m => !NOT_FACTORY_WORTHY.test(m[1]))
+        .filter(m => scan.langId !== 'py' || !isClassHeader(scan.masked, m.index));
+    for (const m of constructions) {
+        const name = m[1];
+        counts[name] = (counts[name] || 0) + 1;
+        firstLine[name] = firstLine[name] || lineOf(scan.masked, m.index + m[0].indexOf(name));
     }
     return Object.entries(counts)
         .filter(([, n]) => n >= minOccurrences)

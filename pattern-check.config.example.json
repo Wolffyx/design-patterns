@@ -71,6 +71,8 @@
 
   "smells": {
     "enabled": true,
+    "parser": "auto",
+    "parserPath": "",
     "scope": "edited",
     "severity": {
       "nested-if": "advise",
@@ -101,7 +103,13 @@
       "lazyLoad": true,
       "resolvers": true,
       "extraCallPatterns": [],
-      "dataAccessReceivers": ""
+      "dataAccessReceivers": "",
+      "crossFile": {
+        "enabled": true,
+        "maxDepth": 2,
+        "timeBudgetMs": 400,
+        "cachePath": ".claude/cache/pattern-io-index.json"
+      }
     },
     "boundaryViolationPaths": {
       "guardedPath": "",

@@ -32,37 +32,10 @@
 const {
     lineOf, balancedEnd, extractFunctions, paramName, bodyText,
 } = require('./_code-scan');
+const { buildMatchers, ioCalls, localIoFunctions, rootCall } = require('./_io-calls');
+const ioIndex = require('./_io-index');
 
 // --- call catalogs ------------------------------------------------------------
-
-// Round-trips for sure. `query` / `execute` / `Exec` / `Query` need an
-// argument so a zero-arg Command.execute() never matches.
-const HIGH_CALLS = [
-    String.raw`\bfetch\s*\(`,
-    String.raw`\baxios(?:\.\w+)?\s*\(`,
-    String.raw`\b(?:requests|httpx|aiohttp)\.\w+\s*\(`,
-    String.raw`\burllib\.request\.urlopen\s*\(`,
-    String.raw`\bhttp\.(?:Get|Post|Head|PostForm)\s*\(`,
-    String.raw`\breqwest::\w+`,
-    String.raw`\.(?:query|execute|executemany|Query|QueryRow|QueryContext|QueryRowContext|Exec|ExecContext)\s*\(\s*[^)\s]`,
-    String.raw`\.(?:executeQuery|executeUpdate|executeScalar|ExecuteScalar|ExecuteReader|ExecuteNonQuery|queryForObject|queryForList)\s*\(`,
-    String.raw`\.(?:findOne|findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findById|findByPk|findMany|findOneBy|findAndCount|findBy[A-Z]\w*|getById|getOne|getReferenceById)\s*\(`,
-    String.raw`\.objects\.\w+\s*\(`,
-    String.raw`\bget_object_or_404\s*\(`,
-    String.raw`\bsession\.(?:get|scalar|scalars|merge|refresh)\s*\(\s*[A-Z]`,
-    String.raw`\.(?:fetchone|fetchall|fetchmany|fetch_one|fetch_all|fetch_optional|fetchrow|fetchval)\s*\(`,
-    String.raw`\.(?:FirstOrDefaultAsync|SingleOrDefaultAsync|FirstAsync|SingleAsync|ToListAsync|FindAsync|AnyAsync|CountAsync|SaveChanges|SaveChangesAsync|GetAsync|PostAsync|PutAsync|SendAsync|GetStringAsync|GetFromJsonAsync)\s*\(`,
-    String.raw`\.(?:insertOne|insertMany|updateOne|updateMany|deleteOne|deleteMany|findOneAndUpdate|bulkWrite|countDocuments)\s*\(`,
-    String.raw`\b(?:sqlx::query(?:_as|_scalar)?!?|diesel::\w+)`,
-];
-
-// Method calls on these receivers are almost always I/O. A receiver is a whole
-// identifier: camelCase with the suffix capitalised (`userRepo`, `httpClient`),
-// snake_case (`user_repo`), or exactly one of the lowercase names — never a
-// substring (`item` must not match `em`).
-const DEFAULT_RECEIVERS = String.raw`(?:[A-Za-z_]\w*?(?:Repo|Repository|Dao|DAO|Client|Api|API|Gateway|Db|DB|DbContext|EntityManager|Sdk|SDK)` +
-    String.raw`|(?:[a-z_]\w*_)?(?:repo|repository|dao|client|api|gateway|db|http_client|sdk)` +
-    String.raw`|prisma|knex|em|entityManager|http|httpClient|supabase|firestore|redis|mongo|s3|dynamo|dynamodb)`;
 
 const WRITE_NAME_RE = /^(?:save\w*|insert\w*|update\w*|upsert\w*|delete\w*|remove|persist|merge|create\w*|put\w*|executemany|executeUpdate|ExecuteNonQuery|SaveChanges\w*|bulkWrite)$/i;
 
@@ -98,25 +71,28 @@ function identifiers(pattern) {
         .filter(v => !LOOP_VAR_STOP.has(v) && !/^[A-Z]/.test(v) && v !== '_');
 }
 
+/** Index of the `[` / `(` matching the closer at `i`, or -1. */
+function matchingOpenBefore(text, i) {
+    const close = text[i];
+    const open = close === ']' ? '[' : '(';
+    let depth = 0;
+    for (let k = i; k >= 0; k--) {
+        depth += text[k] === close ? 1 : text[k] === open ? -1 : 0;
+        if (depth === 0) return k;
+    }
+    return -1;
+}
+
 /** Start of the receiver chain ending right before `idx` (`a.b[i].c` in `a.b[i].c.find(`). */
 function chainStart(text, idx) {
     let i = idx - 1;
     while (i >= 0) {
         const c = text[i];
         if (/[\w.$?!]/.test(c)) { i--; continue; }
-        if (c === ']' || c === ')') {
-            const open = c === ']' ? '[' : '(';
-            let depth = 0;
-            for (; i >= 0; i--) {
-                if (text[i] === c) depth++;
-                else if (text[i] === open && --depth === 0) break;
-            }
-            i--;
-            continue;
-        }
-        break;
+        if (c !== ']' && c !== ')') break;
+        i = matchingOpenBefore(text, i) - 1;
     }
-    return i + 1;
+    return Math.max(0, i + 1);
 }
 
 function callExtent(text, matchIdx, matchLen) {
@@ -131,21 +107,22 @@ function mentions(text, vars) {
     return false;
 }
 
+const ASSIGN_RE = /((?:[A-Za-z_$][\w$]*\s*,\s*)*[A-Za-z_$][\w$]*)\s*(?::\s*[\w<>[\]|, .?]+)?\s*(?::=|(?<![=!<>+\-*/%&|^:])=(?![=>]))\s*([^;\n]+)/g;
+
+/** Names assigned (in `body`) from an expression that mentions a known name. */
+function assignedFrom(body, known) {
+    return [...body.matchAll(ASSIGN_RE)]
+        .filter(m => mentions(m[2], known))
+        .flatMap(m => m[1].split(',').map(x => x.trim()).filter(Boolean));
+}
+
 /** Loop vars plus every variable assigned (in the body) from something that uses them. */
 function derivedVars(body, vars) {
     const out = new Set(vars);
-    const re = /((?:[A-Za-z_$][\w$]*\s*,\s*)*[A-Za-z_$][\w$]*)\s*(?::\s*[\w<>[\]|, .?]+)?\s*(?::=|(?<![=!<>+\-*/%&|^:])=(?![=>]))\s*([^;\n]+)/g;
     for (let pass = 0; pass < 3; pass++) {
-        let grew = false;
-        re.lastIndex = 0;
-        let m;
-        while ((m = re.exec(body)) !== null) {
-            if (!mentions(m[2], out)) continue;
-            for (const lhs of m[1].split(',').map(s => s.trim())) {
-                if (lhs && !out.has(lhs)) { out.add(lhs); grew = true; }
-            }
-        }
-        if (!grew) break;
+        const fresh = assignedFrom(body, out).filter(v => !out.has(v));
+        if (!fresh.length) break;
+        fresh.forEach(v => out.add(v));
     }
     return out;
 }
@@ -170,68 +147,73 @@ function smallLiteral(iterable, max) {
  * from, to, concurrent }. Brace langs: from/to are char offsets into
  * scan.masked; Python: logical-line indices ('comp': one logical line).
  */
-function braceLoops(scan, cfg) {
-    const loops = [];
-    const m = scan.masked;
-    for (const e of scan.entries) {
-        if (e.kind !== 'loop') continue;
-        const h = e.head;
-        let kind = 'for';
-        let vars = [];
-        let iterable = '';
-        let r;
-        if (/^(?:while|do|loop)\b/.test(h)) kind = 'while';
-        else if ((r = /^for\s*\((.*?);(.*?);(.*)\)$/.exec(h)) || (r = /^for\s+([^;{]*?);([^;{]*);(.*)$/.exec(h))) {
-            vars = identifiers((/(?:let|var|int|auto|size_t|long|unsigned|usize|:=)?\s*([A-Za-z_]\w*)\s*:?=/.exec(r[1]) || [])[1] || '');
-            iterable = r[2];
-            const bound = /[<>]=?\s*(\d+)\s*$/.exec(r[2].trim());
-            if (bound && Number(bound[1]) <= cfg.smallLoopMax) iterable = '[]';
-        } else if ((r = /^for\s*(?:await\s*)?\(\s*(?:const|let|var)\s+(.+?)\s+(?:of|in)\s+(.+)\)$/.exec(h))) {
-            vars = identifiers(r[1]);
-            iterable = r[2];
-        } else if ((r = /^foreach\s*\(\s*(?:var|[\w<>[\],.?]+)\s+(\([^)]*\)|\w+)\s+in\s+(.+)\)$/.exec(h))) {
-            vars = identifiers(r[1]);
-            iterable = r[2];
-        } else if ((r = /^for\s*\(\s*(?:final\s+)?[\w<>[\],.?&*:\s]*?\s*&?\s*(\[[^\]]*\]|[A-Za-z_]\w*)\s*:\s*(.+)\)$/.exec(h))) {
-            vars = identifiers(r[1]);
-            iterable = r[2];
-        } else if ((r = /^for\s+(?:([\w\s,]+?)\s*:?=\s*)?range\s+(.+)$/.exec(h))) {
-            vars = identifiers(r[1] || '');
-            iterable = r[2];
-            if ((r[1] || '').includes(',') && !/^\s*_\s*,/.test(r[1])) vars.indexFirst = true;
-        } else if ((r = /^for\s+(.+?)\s+in\s+(.+)$/.exec(h))) {
-            vars = identifiers(r[1]);
-            iterable = r[2];
-        } else if (/^for\s*\{?$/.test(h) || /^for\s+[^;]+$/.test(h)) {
-            kind = 'while'; // Go `for {` / `for cond {`
-        }
-        loops.push({ kind, line: e.line, vars, iterable, from: e.bodyStart, to: e.bodyEnd, concurrent: false, indexFirst: Boolean(vars.indexFirst) });
-    }
+function cStyleLoop(r, cfg) {
+    const bound = /[<>]=?\s*(\d+)\s*$/.exec(r[2].trim());
+    return {
+        vars: identifiers((/(?:let|var|int|auto|size_t|long|unsigned|usize|:=)?\s*([A-Za-z_]\w*)\s*:?=/.exec(r[1]) || [])[1] || ''),
+        iterable: bound && Number(bound[1]) <= cfg.smallLoopMax ? '[]' : r[2],
+    };
+}
 
-    ITER_CALL_RE.lastIndex = 0;
-    let it;
-    while ((it = ITER_CALL_RE.exec(m)) !== null) {
-        if (it[1] === 'then') continue;
-        const open = it.index + it[0].length - 1;
-        const close = balancedEnd(m, open);
-        const args = m.slice(open + 1, close);
-        const lambda = /^\s*(?:async\s+)?(?:\(([^)]*)\)|\|([^|]*)\||function\s*\w*\s*\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*(?:=>|->|\{|[^,]*?=>)?/.exec(args);
-        if (!lambda) continue;
-        const params = lambda[1] || lambda[2] || lambda[3] || lambda[4] || '';
-        const recvStart = chainStart(m, it.index);
-        const lineStart = m.lastIndexOf('\n', recvStart) + 1;
-        const before = m.slice(Math.max(0, lineStart - 200), recvStart);
-        loops.push({
-            kind: 'iter',
-            line: lineOf(m, it.index),
-            vars: identifiers(params.split(',')[0] ? params : ''),
-            iterable: m.slice(recvStart, it.index),
-            from: open + 1,
-            to: close,
-            concurrent: CONCURRENT_RE.test(before.replace(/\s+/g, ' ')),
-        });
+const forEachLoop = r => ({ vars: identifiers(r[1]), iterable: r[2] });
+
+function goRangeLoop(r) {
+    const names = r[1] || '';
+    return { vars: identifiers(names), iterable: r[2], indexFirst: names.includes(',') && !/^\s*_\s*,/.test(names) };
+}
+
+// Loop heads, first match wins. `while`-shaped loops (pagination, polling) are skipped later.
+const LOOP_SHAPES = [
+    [/^(?:while|do|loop)\b/, () => ({ kind: 'while' })],
+    [/^for\s*\((.*?);(.*?);(.*)\)$/, cStyleLoop],
+    [/^for\s+([^;{]*?);([^;{]*);(.*)$/, cStyleLoop],
+    [/^for\s*(?:await\s*)?\(\s*(?:const|let|var)\s+(.+?)\s+(?:of|in)\s+(.+)\)$/, forEachLoop],
+    [/^foreach\s*\(\s*(?:var|[\w<>[\],.?]+)\s+(\([^)]*\)|\w+)\s+in\s+(.+)\)$/, forEachLoop],
+    [/^for\s*\(\s*(?:final\s+)?[\w<>[\],.?&*:\s]*?\s*&?\s*(\[[^\]]*\]|[A-Za-z_]\w*)\s*:\s*(.+)\)$/, forEachLoop],
+    [/^for\s+(?:([\w\s,]+?)\s*:?=\s*)?range\s+(.+)$/, goRangeLoop],
+    [/^for\s+(.+?)\s+in\s+(.+)$/, forEachLoop],
+    [/^for\s*\{?$|^for\s+[^;]+$/, () => ({ kind: 'while' })], // Go `for {` / `for cond {`
+];
+
+function loopShape(head, cfg) {
+    for (const [re, build] of LOOP_SHAPES) {
+        const r = re.exec(head);
+        if (r) return { kind: 'for', vars: [], iterable: '', ...build(r, cfg) };
     }
-    return loops;
+    return { kind: 'for', vars: [], iterable: '' };
+}
+
+/** `.forEach(x => …)`, `.map(async (x) => …)`, Rust `.for_each(|x| …)`. */
+function iteratorLoops(m) {
+    return [...m.matchAll(ITER_CALL_RE)]
+        .filter(it => it[1] !== 'then')
+        .map(it => {
+            const open = it.index + it[0].length - 1;
+            const close = balancedEnd(m, open);
+            const lambda = /^\s*(?:async\s+)?(?:\(([^)]*)\)|\|([^|]*)\||function\s*\w*\s*\(([^)]*)\)|([A-Za-z_$][\w$]*))\s*(?:=>|->|\{|[^,]*?=>)?/.exec(m.slice(open + 1, close));
+            if (!lambda) return null;
+            const params = lambda[1] || lambda[2] || lambda[3] || lambda[4] || '';
+            const recvStart = chainStart(m, it.index);
+            const lineStart = m.lastIndexOf('\n', recvStart) + 1;
+            const before = m.slice(Math.max(0, lineStart - 200), recvStart);
+            return {
+                kind: 'iter',
+                line: lineOf(m, it.index),
+                vars: identifiers(params),
+                iterable: m.slice(recvStart, it.index),
+                from: open + 1,
+                to: close,
+                concurrent: CONCURRENT_RE.test(before.replace(/\s+/g, ' ')),
+            };
+        })
+        .filter(Boolean);
+}
+
+function braceLoops(scan, cfg) {
+    const statements = scan.entries
+        .filter(e => e.kind === 'loop')
+        .map(e => ({ line: e.line, from: e.bodyStart, to: e.bodyEnd, concurrent: false, indexFirst: false, ...loopShape(e.head, cfg) }));
+    return statements.concat(iteratorLoops(scan.masked));
 }
 
 function pyLoops(scan) {
@@ -291,103 +273,42 @@ function region(scan, loop) {
     return { text: parts.join('\n'), lineAt, key: i => `${lineAt(i)}:${i}` };
 }
 
-// --- I/O classification ----------------------------------------------------------
-
-function buildMatchers(cfg) {
-    const extra = Array.isArray(cfg.extraCallPatterns) ? cfg.extraCallPatterns : [];
-    const receivers = cfg.dataAccessReceivers || DEFAULT_RECEIVERS;
-    return {
-        high: new RegExp(HIGH_CALLS.concat(extra).join('|'), 'g'),
-        receiver: new RegExp(String.raw`(?:^|[^\w$.])((?:this\.|self\.)?(?:[A-Za-z_$][\w$]*\.)*?${receivers})\.([A-Za-z_]\w*)\s*\(`, 'g'),
-    };
-}
-
-function callName(matchText) {
-    const m = /([A-Za-z_]\w*)\s*!?\s*\(\s*\S?$/.exec(matchText) || /([A-Za-z_]\w*)(?:::\w+)?\s*$/.exec(matchText);
-    return m ? m[1] : matchText.trim();
-}
-
-/** Every I/O call in `text`: { index, len, call, name, confidence, via? }. */
-function ioCalls(text, matchers, localIo) {
-    const out = [];
-    const taken = new Set();
-    const push = (index, len, call, name, confidence, via) => {
-        if (taken.has(index)) return;
-        taken.add(index);
-        out.push({ index, len, call, name, confidence, via });
-    };
-    let m;
-    matchers.high.lastIndex = 0;
-    while ((m = matchers.high.exec(text)) !== null) {
-        const call = m[0].replace(/\s*\(\s*[^)]*$/, '(').replace(/\s+/g, '');
-        push(m.index, m[0].length, call, callName(m[0]), 'high');
-        if (m[0].length === 0) matchers.high.lastIndex++;
-    }
-    matchers.receiver.lastIndex = 0;
-    while ((m = matchers.receiver.exec(text)) !== null) {
-        if (m[0].length === 0) { matchers.receiver.lastIndex++; continue; }
-        const idx = m.index + m[0].indexOf(m[1]);
-        if (out.some(o => Math.abs(o.index - idx) < m[0].length)) continue;
-        push(idx, m[0].length - (idx - m.index), `${m[1]}.${m[2]}(`, m[2], 'medium');
-    }
-    if (localIo && localIo.size) {
-        const names = Array.from(localIo.keys()).map(n => n.replace(/\$/g, '\\$')).join('|');
-        const re = new RegExp(`(?:^|[^\\w$.])((?:this\\.|self\\.)?(${names}))\\s*\\(`, 'g');
-        while ((m = re.exec(text)) !== null) {
-            const idx = m.index + m[0].indexOf(m[1]);
-            if (out.some(o => o.index <= idx && idx < o.index + o.len)) continue;
-            push(idx, m[0].length, `${m[2]}()`, m[2], 'medium', localIo.get(m[2]));
-        }
-    }
-    return out.sort((a, b) => a.index - b.index);
-}
-
-/** Same-file functions that do I/O, transitively: name → { call, line }. */
-function localIoFunctions(scan, fns, matchers) {
-    const io = new Map();
-    const bodies = fns.filter(f => f.name !== '(anonymous)').map(f => ({ f, name: f.name.split('::').pop(), text: bodyText(scan, f.entry) }));
-    for (const b of bodies) {
-        const hit = ioCalls(b.text, matchers, null)[0];
-        if (hit) io.set(b.name, { call: hit.call, line: b.f.line });
-    }
-    for (let pass = 0; pass < 4; pass++) {
-        let grew = false;
-        for (const b of bodies) {
-            if (io.has(b.name)) continue;
-            const hit = ioCalls(b.text, { high: /(?!)/g, receiver: /(?!)/g }, io)[0];
-            if (hit) { io.set(b.name, { call: `${hit.name}()`, line: b.f.line, through: hit.via }); grew = true; }
-        }
-        if (!grew) break;
-    }
-    return io;
-}
-
 // --- detectors ---------------------------------------------------------------------
 
+// what each kind of finding says, and the fix it points at
+const KIND_TEXT = {
+    invariant: (what, loop) => ({
+        message: `loop-invariant I/O: ${what} doesn't depend on the loop (line ${loop.line}) but runs every iteration`,
+        suggest: 'hoisting the call above the loop and reusing the result',
+    }),
+    write: (what, loop, itemVar) => ({
+        message: `N writes: ${what} once per ${itemVar} (loop line ${loop.line})`,
+        suggest: 'one bulk write (saveAll / bulk_create / executemany / AddRange + one SaveChanges / insertMany)',
+    }),
+    'per-item': (what, loop, itemVar) => ({
+        message: `N+1: ${what} once per ${itemVar} (loop line ${loop.line})`,
+        suggest: 'one batched call (IN / = ANY / findMany by ids / bulk endpoint) before the loop, then a map lookup; ' +
+            'eager-load relations; DataLoader for resolvers',
+    }),
+};
+
+/** `svc.get()` (does `.findUnique(`, src/users.ts:12) — where the round-trip really happens. */
+function describeCall(hit) {
+    if (!hit.via) return `\`${hit.call}\``;
+    const root = rootCall(hit.via);
+    const where = root.file ? `${root.file}:${root.line}` : `line ${root.line}`;
+    return `\`${hit.call}\` (does \`${root.call}\`, ${where})`;
+}
+
 function describe(hit, loop, dependent, parentLoop) {
-    const isWrite = WRITE_NAME_RE.test(hit.name);
-    const kind = !dependent ? 'invariant' : isWrite ? 'write' : 'per-item';
-    const what = hit.via
-        ? `\`${hit.call}\` (does \`${hit.via.through ? hit.via.through.call : hit.via.call}\`, line ${hit.via.line})`
-        : `\`${hit.call}\``;
+    const kind = !dependent ? 'invariant' : WRITE_NAME_RE.test(hit.name) ? 'write' : 'per-item';
     const itemVar = loop.vars.length ? `\`${itemVarOf(loop)}\`` : 'item';
-    let message;
-    let suggest;
-    if (kind === 'invariant') {
-        message = `loop-invariant I/O: ${what} doesn't depend on the loop (line ${loop.line}) but runs every iteration`;
-        suggest = 'hoisting the call above the loop and reusing the result';
-    } else if (kind === 'write') {
-        message = `N writes: ${what} once per ${itemVar} (loop line ${loop.line})`;
-        suggest = 'one bulk write (saveAll / bulk_create / executemany / AddRange + one SaveChanges / insertMany)';
-    } else {
-        message = `N+1: ${what} once per ${itemVar} (loop line ${loop.line})`;
-        suggest = 'one batched call (IN / = ANY / findMany by ids / bulk endpoint) before the loop, then a map lookup; ' +
-            'eager-load relations; DataLoader for resolvers';
-    }
+    const text = KIND_TEXT[kind](describeCall(hit), loop, itemVar);
+    let message = text.message;
     if (loop.concurrent) message += ' — concurrent, but still N round-trips';
     if (parentLoop) message += ` — nested in loop line ${parentLoop.line}: N×M round-trips`;
     if (hit.confidence === 'medium' && !hit.via) message = message.replace(/^N\+1:/, 'N+1 (likely):');
-    return { kind, message, suggest };
+    return { kind, message, suggest: text.suggest };
 }
 
 function enclosing(loops, loop, scan) {
@@ -402,111 +323,127 @@ function enclosing(loops, loop, scan) {
     return best;
 }
 
-function detectLoops(scan, cfg, matchers, localIo) {
-    const findings = [];
-    const all = scan.langId === 'py' ? pyLoops(scan) : braceLoops(scan, cfg);
-    const minConf = CONFIDENCE[cfg.minConfidence] ?? CONFIDENCE.medium;
-    // innermost first, so a call is attributed to the tightest loop
-    const loops = all.slice().sort((a, b) => (a.to - a.from) - (b.to - b.from));
-    const claimed = new Set();
-    const ioLines = new Set(); // any loop's I/O line — never also an await-in-loop
+/** First claim of a key wins (a call belongs to its innermost loop). */
+function claim(claimed, key) {
+    if (claimed.has(key)) return false;
+    claimed.add(key);
+    return true;
+}
 
-    for (const loop of loops) {
-        if (loop.kind === 'while' && !cfg.includeWhileLoops) continue;
-        if (smallLiteral(loop.iterable, cfg.smallLoopMax)) continue;
-        const reg = region(scan, loop);
-        const vars = derivedVars(reg.text, loop.vars);
-        const parentLoop = enclosing(all, loop, scan);
+function skipLoop(loop, cfg) {
+    return (loop.kind === 'while' && !cfg.includeWhileLoops) || smallLiteral(loop.iterable, cfg.smallLoopMax);
+}
 
-        for (const hit of ioCalls(reg.text, matchers, cfg.followLocalFunctions === false ? null : localIo)) {
-            ioLines.add(reg.lineAt(hit.index));
-            if (CONFIDENCE[hit.confidence] < minConf) continue;
-            const key = reg.key(hit.index);
-            if (claimed.has(key)) continue;
-            claimed.add(key);
-            const extent = callExtent(reg.text, hit.index, hit.len);
-            const dependent = vars.size === 0 || mentions(extent, vars);
-            const d = describe(hit, loop, dependent, parentLoop && parentLoop.kind !== 'while' ? parentLoop : null);
-            const line = reg.lineAt(hit.index);
-            findings.push({
+function ioFindingsFor(ctx, loop, reg) {
+    const vars = derivedVars(reg.text, loop.vars);
+    const parent = enclosing(ctx.all, loop, ctx.scan);
+    const nestedIn = parent && parent.kind !== 'while' ? parent : null;
+    const hits = ioCalls(reg.text, ctx.matchers, ctx.known);
+    hits.forEach(h => ctx.ioLines.add(reg.lineAt(h.index)));
+    return hits
+        .filter(h => CONFIDENCE[h.confidence] >= ctx.minConf)
+        .filter(h => claim(ctx.claimed, reg.key(h.index)))
+        .map(h => {
+            const dependent = vars.size === 0 || mentions(callExtent(reg.text, h.index, h.len), vars);
+            const d = describe(h, loop, dependent, nestedIn);
+            return {
                 smellId: 'n-plus-one',
-                line,
+                line: reg.lineAt(h.index),
                 message: d.message,
                 suggest: d.suggest,
                 refSlug: 'control-flow',
-                signature: `${d.kind}|${hit.name}`,
-                confidence: hit.confidence,
-            });
-        }
+                signature: `${d.kind}|${h.name}`,
+                confidence: h.confidence,
+            };
+        });
+}
 
-        if (cfg.flagAwaitInLoop !== false && !loop.concurrent && loop.kind !== 'comp') {
-            const lines = reg.text.split('\n');
-            let pos = 0;
-            for (const l of lines) {
-                const line = reg.lineAt(pos);
-                pos += l.length + 1;
-                if (!AWAIT_RE.test(l) || ioLines.has(line) || claimed.has(`await:${line}`)) continue;
-                claimed.add(`await:${line}`);
-                findings.push({
-                    smellId: 'await-in-loop',
-                    line,
-                    message: `sequential \`await\` inside loop starting line ${loop.line} (one wait per item)`,
-                    suggest: 'Promise.all / asyncio.gather / Task.WhenAll (bounded) when iterations are independent; ' +
-                        'if each step needs the previous one, suppress',
-                    refSlug: 'control-flow',
-                    signature: 'await',
-                    confidence: 'low',
-                });
-            }
-        }
-    }
+function awaitFindingsFor(ctx, loop, reg) {
+    if (ctx.cfg.flagAwaitInLoop === false || loop.concurrent || loop.kind === 'comp') return [];
+    let pos = 0;
+    return reg.text.split('\n')
+        .map(l => {
+            const line = reg.lineAt(pos);
+            pos += l.length + 1;
+            return { l, line };
+        })
+        .filter(x => AWAIT_RE.test(x.l) && !ctx.ioLines.has(x.line) && claim(ctx.claimed, `await:${x.line}`))
+        .map(x => ({
+            smellId: 'await-in-loop',
+            line: x.line,
+            message: `sequential \`await\` inside loop starting line ${loop.line} (one wait per item)`,
+            suggest: 'Promise.all / asyncio.gather / Task.WhenAll (bounded) when iterations are independent; ' +
+                'if each step needs the previous one, suppress',
+            refSlug: 'control-flow',
+            signature: 'await',
+            confidence: 'low',
+        }));
+}
+
+function detectLoops(scan, cfg, matchers, known) {
+    const all = scan.langId === 'py' ? pyLoops(scan) : braceLoops(scan, cfg);
+    const ctx = {
+        scan, cfg, matchers, known, all,
+        minConf: CONFIDENCE[cfg.minConfidence] ?? CONFIDENCE.medium,
+        claimed: new Set(),
+        ioLines: new Set(), // any loop's I/O line — never also an await-in-loop
+    };
+    // innermost first, so a call is attributed to the tightest loop
+    const findings = all.slice()
+        .sort((a, b) => (a.to - a.from) - (b.to - b.from))
+        .filter(loop => !skipLoop(loop, cfg))
+        .flatMap(loop => {
+            const reg = region(scan, loop);
+            return ioFindingsFor(ctx, loop, reg).concat(awaitFindingsFor(ctx, loop, reg));
+        });
     return { findings, loops: all };
+}
+
+/** What a loop iterates: the expression, or what the identifier was last assigned from. */
+function iterableSource(scan, loop) {
+    const source = loop.iterable.replace(/^\s*await\s+/, '').trim();
+    const ident = /^([A-Za-z_$][\w$.]*)$/.exec(source);
+    if (!ident) return source;
+    const before = scan.langId === 'py'
+        ? scan.logical.slice(0, loop.from).map(l => l.text).join('\n')
+        : scan.masked.slice(0, loop.from);
+    const re = new RegExp(`(?:^|[^\\w$.])${ident[1].replace(/[.$]/g, '\\$&')}\\s*(?::\\s*[^=\\n]+)?(?::=|=)(?!=)\\s*([^;\\n]+(?:\\n\\s*\\.[^;\\n]+)*)`, 'g');
+    const assigned = [...before.matchAll(re)].map(m => m[1]);
+    return assigned.length ? assigned[assigned.length - 1] : source;
 }
 
 /** ORM rows fetched without eager loading, then a relation read per row. */
 function detectLazyLoads(scan, loops) {
     const access = LAZY_ACCESS[scan.langId];
     if (!access) return [];
-    const findings = [];
-    for (const loop of loops) {
-        if (loop.kind === 'while' || !loop.vars.length) continue;
-        let source = loop.iterable.replace(/^\s*await\s+/, '').trim();
-        const ident = /^([A-Za-z_$][\w$.]*)$/.exec(source);
-        if (ident) {
-            const before = scan.langId === 'py'
-                ? scan.logical.slice(0, loop.from).map(l => l.text).join('\n')
-                : scan.masked.slice(0, loop.from);
-            const re = new RegExp(`(?:^|[^\\w$.])${ident[1].replace(/[.$]/g, '\\$&')}\\s*(?::\\s*[^=\\n]+)?(?::=|=)(?!=)\\s*([^;\\n]+(?:\\n\\s*\\.[^;\\n]+)*)`, 'g');
-            let m;
-            let last = null;
-            while ((m = re.exec(before)) !== null) last = m[1];
-            if (last) source = last;
-        }
-        if (!ORM_FETCH_RE.test(source) || EAGER_RE.test(source)) continue;
-        const reg = region(scan, loop);
-        const hit = access(loop.vars[0]).exec(reg.text);
-        if (!hit) continue;
-        findings.push({
-            smellId: 'n-plus-one',
-            line: reg.lineAt(hit.index),
-            message: `N+1 (possible lazy load): \`${hit[0].replace(/^await\s+/, '')}\` per row of \`${source.slice(0, 60).trim()}\` fetched without eager loading`,
-            suggest: 'eager-load the relation in the query (select_related / prefetch_related / selectinload / ' +
-                'JOIN FETCH / .Include / relations) or batch-load by ids',
-            refSlug: 'control-flow',
-            signature: `lazy|${hit[1]}`,
-            confidence: 'medium',
-        });
-    }
-    return findings;
+    return loops
+        .filter(loop => loop.kind !== 'while' && loop.vars.length)
+        .map(loop => ({ loop, source: iterableSource(scan, loop) }))
+        .filter(x => ORM_FETCH_RE.test(x.source) && !EAGER_RE.test(x.source))
+        .map(({ loop, source }) => {
+            const reg = region(scan, loop);
+            const hit = access(loop.vars[0]).exec(reg.text);
+            return hit && {
+                smellId: 'n-plus-one',
+                line: reg.lineAt(hit.index),
+                message: `N+1 (possible lazy load): \`${hit[0].replace(/^await\s+/, '')}\` per row of \`${source.slice(0, 60).trim()}\` fetched without eager loading`,
+                suggest: 'eager-load the relation in the query (select_related / prefetch_related / selectinload / ' +
+                    'JOIN FETCH / .Include / relations) or batch-load by ids',
+                refSlug: 'control-flow',
+                signature: `lazy|${hit[1]}`,
+                confidence: 'medium',
+            };
+        })
+        .filter(Boolean);
 }
 
 /** GraphQL field resolvers that query once per parent object. */
-function detectResolvers(scan, fns, matchers, localIo) {
+function detectResolvers(scan, fns, matchers, known) {
     if (BATCHED_RE.test(scan.text)) return [];
     const resolverFile = RESOLVER_FILE_RE.test(scan.text);
     const findings = [];
     const check = (name, parentVar, body, line) => {
-        for (const hit of ioCalls(body, matchers, localIo)) {
+        for (const hit of ioCalls(body, matchers, known)) {
             if (!mentions(callExtent(body, hit.index, hit.len), [parentVar])) continue;
             findings.push({
                 smellId: 'n-plus-one',
@@ -546,15 +483,33 @@ function detectResolvers(scan, fns, matchers, localIo) {
  * @param {object} scan  _code-scan.scanBlocks result
  * @param {object} cfg   merged `smells.nPlusOne` config
  */
-function detect(scan, cfg) {
+/**
+ * What this file knows does I/O: its own helpers (transitively) plus — when
+ * `crossFile.enabled` — imported functions, namespaces and injected services.
+ */
+function knownIo(scan, c, matchers, filePath, fns) {
+    if (c.followLocalFunctions === false) return { functions: new Map(), receivers: new Map() };
+    const external = c.crossFile && c.crossFile.enabled !== false && filePath
+        ? ioIndex.crossFileIo(scan, filePath, c, matchers)
+        : { functions: new Map(), receivers: new Map() };
+    const local = localIoFunctions(scan, fns, matchers, external);
+    return { functions: new Map([...external.functions, ...local]), receivers: external.receivers };
+}
+
+/**
+ * @param {object} scan      _code-scan.scanBlocks / _ts-scan.scan result
+ * @param {object} cfg       merged `smells.nPlusOne` config
+ * @param {string} filePath  enables cross-file resolution of imported helpers / services
+ */
+function detect(scan, cfg, filePath) {
     if (!cfg || cfg.enabled === false) return [];
     const c = { smallLoopMax: 10, minConfidence: 'medium', ...cfg };
     const matchers = buildMatchers(c);
     const fns = extractFunctions(scan);
-    const localIo = c.followLocalFunctions === false ? new Map() : localIoFunctions(scan, fns, matchers);
-    const { findings, loops } = detectLoops(scan, c, matchers, localIo);
+    const known = knownIo(scan, c, matchers, filePath, fns);
+    const { findings, loops } = detectLoops(scan, c, matchers, known);
     if (c.lazyLoad !== false) findings.push(...detectLazyLoads(scan, loops));
-    if (c.resolvers !== false) findings.push(...detectResolvers(scan, fns, matchers, localIo));
+    if (c.resolvers !== false) findings.push(...detectResolvers(scan, fns, matchers, known));
     const seen = new Set();
     return findings
         .filter(f => {
@@ -566,4 +521,4 @@ function detect(scan, cfg) {
         .sort((a, b) => a.line - b.line);
 }
 
-module.exports = { detect, HIGH_CALLS, DEFAULT_RECEIVERS };
+module.exports = { detect };

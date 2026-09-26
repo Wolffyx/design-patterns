@@ -55,86 +55,95 @@ function complexityOf(scan, fn) {
     return 1 + hits.length;
 }
 
-function detectFunctions(scan, s, fns) {
-    const findings = [];
-    const { langId } = scan;
-    const maxLines = Number(s.maxFunctionLines) || 0;
-    const maxParams = Number(s.maxParams) || 0;
-    const ctorMax = Number(s.constructorMaxParams) || 0;
-    const maxCx = Number(s.maxComplexity) || 0;
-    const boolRe = BOOL_PARAM[langId];
+// --- per-function checks: each returns a finding or null --------------------------
 
-    for (const fn of fns) {
-        const named = fn.name !== '(anonymous)';
-        const span = [fn.line, bodyLineRange(scan, fn.entry)[1]];
-        const label = named ? `\`${fn.name}()\`` : 'anonymous function';
-        const ctor = named && isConstructor(fn, langId);
+function longFunction(scan, fn, c, lim) {
+    if (lim.maxLines <= 0) return null;
+    const n = bodyLineCount(scan, fn);
+    if (n <= lim.maxLines) return null;
+    return {
+        smellId: 'long-function',
+        line: fn.line,
+        span: c.span,
+        message: `${c.label} is ${n} lines (max ${lim.maxLines})`,
+        suggest: 'extracting cohesive steps into named functions (one level of abstraction per function)',
+        refSlug: 'functions',
+        signature: fn.name,
+    };
+}
 
-        if (maxLines > 0) {
-            const n = bodyLineCount(scan, fn);
-            if (n > maxLines) {
-                findings.push({
-                    smellId: 'long-function',
-                    line: fn.line,
-                    span,
-                    message: `${label} is ${n} lines (max ${maxLines})`,
-                    suggest: 'extracting cohesive steps into named functions (one level of abstraction per function)',
-                    refSlug: 'functions',
-                    signature: fn.name,
-                });
-            }
-        }
-
-        if (ctor && ctorMax > 0 && fn.params.length >= ctorMax) {
-            findings.push({
-                smellId: 'long-constructor',
-                line: fn.line,
-                message: `long constructor ${label} (${fn.params.length} params)`,
-                suggest: 'Builder, or an options object / named args / functional options',
-                refSlug: 'builder',
-                signature: String(fn.params.length),
-            });
-        } else if (!ctor && maxParams > 0 && fn.params.length > maxParams) {
-            findings.push({
-                smellId: 'long-param-list',
-                line: fn.line,
-                message: `${label} takes ${fn.params.length} parameters (max ${maxParams})`,
-                suggest: 'a parameter object / options object, or splitting the function',
-                refSlug: 'functions',
-                signature: `${fn.name}|${fn.params.length}`,
-            });
-        }
-
-        if (s.booleanFlagParam !== false && boolRe && named && !ctor && !SETTER_RE.test(fn.name.split('::').pop())) {
-            const flag = fn.params.find(p => boolRe.test(p.trim()));
-            if (flag) {
-                findings.push({
-                    smellId: 'boolean-flag-param',
-                    line: fn.line,
-                    message: `boolean flag parameter \`${flag.trim()}\` on ${label}`,
-                    suggest: 'two intention-revealing functions, or an enum / options object when there are more modes',
-                    refSlug: 'functions',
-                    signature: fn.name,
-                });
-            }
-        }
-
-        if (maxCx > 0) {
-            const cx = complexityOf(scan, fn);
-            if (cx > maxCx) {
-                findings.push({
-                    smellId: 'complexity',
-                    line: fn.line,
-                    span,
-                    message: `${label} has cyclomatic complexity ${cx} (max ${maxCx})`,
-                    suggest: 'guard clauses, extracting branches into functions, or a dispatch map for branch ladders',
-                    refSlug: 'functions',
-                    signature: fn.name,
-                });
-            }
-        }
+function parameterCount(scan, fn, c, lim) {
+    const n = fn.params.length;
+    if (c.ctor && lim.ctorMax > 0 && n >= lim.ctorMax) {
+        return {
+            smellId: 'long-constructor',
+            line: fn.line,
+            message: `long constructor ${c.label} (${n} params)`,
+            suggest: 'Builder, or an options object / named args / functional options',
+            refSlug: 'builder',
+            signature: String(n),
+        };
     }
-    return findings;
+    if (c.ctor || lim.maxParams <= 0 || n <= lim.maxParams) return null;
+    return {
+        smellId: 'long-param-list',
+        line: fn.line,
+        message: `${c.label} takes ${n} parameters (max ${lim.maxParams})`,
+        suggest: 'a parameter object / options object, or splitting the function',
+        refSlug: 'functions',
+        signature: `${fn.name}|${n}`,
+    };
+}
+
+function booleanFlag(scan, fn, c, lim) {
+    const eligible = lim.boolRe && c.named && !c.ctor && !SETTER_RE.test(fn.name.split('::').pop());
+    const flag = eligible ? fn.params.find(p => lim.boolRe.test(p.trim())) : null;
+    if (!flag) return null;
+    return {
+        smellId: 'boolean-flag-param',
+        line: fn.line,
+        message: `boolean flag parameter \`${flag.trim()}\` on ${c.label}`,
+        suggest: 'two intention-revealing functions, or an enum / options object when there are more modes',
+        refSlug: 'functions',
+        signature: fn.name,
+    };
+}
+
+function complexity(scan, fn, c, lim) {
+    if (lim.maxCx <= 0) return null;
+    const cx = complexityOf(scan, fn);
+    if (cx <= lim.maxCx) return null;
+    return {
+        smellId: 'complexity',
+        line: fn.line,
+        span: c.span,
+        message: `${c.label} has cyclomatic complexity ${cx} (max ${lim.maxCx})`,
+        suggest: 'guard clauses, extracting branches into functions, or a dispatch map for branch ladders',
+        refSlug: 'functions',
+        signature: fn.name,
+    };
+}
+
+const FUNCTION_CHECKS = [longFunction, parameterCount, booleanFlag, complexity];
+
+function detectFunctions(scan, s, fns) {
+    const lim = {
+        maxLines: Number(s.maxFunctionLines) || 0,
+        maxParams: Number(s.maxParams) || 0,
+        ctorMax: Number(s.constructorMaxParams) || 0,
+        maxCx: Number(s.maxComplexity) || 0,
+        boolRe: s.booleanFlagParam === false ? null : BOOL_PARAM[scan.langId],
+    };
+    return fns.flatMap(fn => {
+        const named = fn.name !== '(anonymous)';
+        const c = {
+            named,
+            ctor: named && isConstructor(fn, scan.langId),
+            label: named ? `\`${fn.name}()\`` : 'anonymous function',
+            span: [fn.line, bodyLineRange(scan, fn.entry)[1]],
+        };
+        return FUNCTION_CHECKS.map(check => check(scan, fn, c, lim)).filter(Boolean);
+    });
 }
 
 // --- swallowed exceptions ----------------------------------------------------
@@ -151,47 +160,43 @@ function swallowed(line, what) {
     };
 }
 
+function pySwallowed(scan) {
+    const L = scan.logical;
+    const rawLines = scan.text.split('\n');
+    const blocks = scan.entries
+        .filter(e => /^except\b/.test(e.head))
+        .map(e => ({ e, body: L.slice(e.logicalIndex + 1, e.bodyTo).map(l => l.text), raw: rawLines.slice(e.line - 1, e.endLine).join('\n') }))
+        .filter(x => x.body.length && x.body.every(t => t === 'pass' || t === '...') && !x.raw.includes('#'))
+        .map(x => swallowed(x.e.line, `\`${x.e.head}\` with only \`${x.body[0]}\``));
+    const oneLiners = L
+        .map(l => ({ l, m: /^(except\b[^:]*):\s*(pass|\.\.\.)\s*$/.exec(l.text) }))
+        .filter(x => x.m && !(rawLines[x.l.line - 1] || '').includes('#'))
+        .map(x => swallowed(x.l.line, `\`${x.m[1]}: ${x.m[2]}\``));
+    return blocks.concat(oneLiners);
+}
+
+const SWALLOW_PATTERNS = {
+    ts: [[/\.catch\(\s*(?:\(\s*[\w$]*\s*\)|[\w$]+)\s*=>\s*(?:\{\s*\}|null|undefined|void 0)\s*\)/g, 'empty `.catch(() => {})`']],
+    go: [[/\bif\s+[^{\n]*\berr\s*!=\s*nil\s*\{\s*\}/g, 'empty `if err != nil {}`']],
+    rust: [[/\bErr\(\s*_?\w*\s*\)\s*=>\s*(?:\{\s*\}|\(\s*\))/g, 'empty `Err(_) => {}` arm']],
+};
+
+function braceSwallowed(scan) {
+    const { masked, text } = scan;
+    const emptyCatches = scan.entries
+        .filter(e => e.kind === 'try' && /^catch\b/.test(e.head))
+        .filter(e => !masked.slice(e.bodyStart, e.bodyEnd).trim() && !text.slice(e.bodyStart, e.bodyEnd).trim())
+        .map(e => swallowed(e.line, `empty \`${e.head}\``));
+    // a comment inside the block (masked ≠ original) means "ignored on purpose"
+    const idioms = (SWALLOW_PATTERNS[scan.langId] || [])
+        .flatMap(([re, what]) => [...masked.matchAll(re)].map(m => ({ m, what })))
+        .filter(({ m }) => text.slice(m.index, m.index + m[0].length) === m[0])
+        .map(({ m, what }) => swallowed(lineOf(masked, m.index), what));
+    return emptyCatches.concat(idioms);
+}
+
 function detectSwallowed(scan) {
-    const findings = [];
-    const { langId, masked, text } = scan;
-
-    if (langId === 'py') {
-        const L = scan.logical;
-        for (const e of scan.entries) {
-            if (!/^except\b/.test(e.head)) continue;
-            const body = L.slice(e.logicalIndex + 1, e.bodyTo).map(l => l.text);
-            const raw = scan.text.split('\n').slice(e.line - 1, e.endLine).join('\n');
-            if (body.length && body.every(t => t === 'pass' || t === '...') && !raw.includes('#')) {
-                findings.push(swallowed(e.line, `\`${e.head}\` with only \`${body[0]}\``));
-            }
-        }
-        for (const l of L) {
-            const m = /^(except\b[^:]*):\s*(pass|\.\.\.)\s*$/.exec(l.text);
-            const raw = scan.text.split('\n')[l.line - 1] || '';
-            if (m && !raw.includes('#')) findings.push(swallowed(l.line, `\`${m[1]}: ${m[2]}\``));
-        }
-        return findings;
-    }
-
-    for (const e of scan.entries) {
-        if (e.kind !== 'try' || !/^catch\b/.test(e.head)) continue;
-        const inner = masked.slice(e.bodyStart, e.bodyEnd);
-        const original = text.slice(e.bodyStart, e.bodyEnd);
-        if (!inner.trim() && !original.trim()) findings.push(swallowed(e.line, `empty \`${e.head}\``));
-    }
-    const res = [];
-    if (langId === 'ts') res.push([/\.catch\(\s*(?:\(\s*[\w$]*\s*\)|[\w$]+)\s*=>\s*(?:\{\s*\}|null|undefined|void 0)\s*\)/g, 'empty `.catch(() => {})`']);
-    if (langId === 'go') res.push([/\bif\s+[^{\n]*\berr\s*!=\s*nil\s*\{\s*\}/g, 'empty `if err != nil {}`']);
-    if (langId === 'rust') res.push([/\bErr\(\s*_?\w*\s*\)\s*=>\s*(?:\{\s*\}|\(\s*\))/g, 'empty `Err(_) => {}` arm']);
-    for (const [re, what] of res) {
-        let m;
-        while ((m = re.exec(masked)) !== null) {
-            // a comment inside the block means "ignored on purpose"
-            if (text.slice(m.index, m.index + m[0].length) !== masked.slice(m.index, m.index + m[0].length)) continue;
-            findings.push(swallowed(lineOf(masked, m.index), what));
-        }
-    }
-    return findings;
+    return scan.langId === 'py' ? pySwallowed(scan) : braceSwallowed(scan);
 }
 
 /**

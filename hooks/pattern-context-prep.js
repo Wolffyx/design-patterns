@@ -85,6 +85,14 @@ function matchFamily(filePath, cfg) {
 
 // --- sibling glob ----------------------------------------------------------
 
+function listDir(dir) {
+    try { return fs.readdirSync(dir); } catch { return []; }
+}
+
+function isRegularFile(p) {
+    try { return fs.statSync(p).isFile(); } catch { return false; }
+}
+
 function listSiblings(filePath, cfg) {
     const cap = cfg.contextPrep.maxSiblings || 6;
     // case-insensitive: snake_case languages name files stripe_adapter.py / base.go
@@ -99,23 +107,13 @@ function listSiblings(filePath, cfg) {
     const extRe = new RegExp('\\.(?:' + lang.exts.join('|').replace(/\+/g, '\\+') + ')$', 'i');
     const excludes = lang.excludeGlobs || [];
 
+    const isSibling = full => extRe.test(full) && nameRe.test(path.basename(full)) &&
+        !excludes.some(g => shared.matchesGlob(full, g)) &&
+        path.resolve(full) !== path.resolve(filePath) && isRegularFile(full);
     const out = [];
     for (const d of dirs) {
-        if (overBudget(cfg.contextPrep.timeBudgetMs)) break;
-        let entries = [];
-        try { entries = fs.readdirSync(d); } catch { continue; }
-        for (const name of entries) {
-            if (out.length >= cap) break;
-            if (!extRe.test(name)) continue;
-            const full = path.join(d, name);
-            if (excludes.some(g => shared.matchesGlob(full, g))) continue;
-            if (path.resolve(full) === path.resolve(filePath)) continue;
-            let stat;
-            try { stat = fs.statSync(full); } catch { continue; }
-            if (!stat.isFile()) continue;
-            if (!nameRe.test(name)) continue;
-            out.push(full.replace(/\\/g, '/'));
-        }
+        if (overBudget(cfg.contextPrep.timeBudgetMs) || out.length >= cap) break;
+        out.push(...listDir(d).map(name => path.join(d, name)).filter(isSibling).map(f => f.replace(/\\/g, '/')));
     }
     return out.slice(0, cap);
 }
@@ -171,20 +169,15 @@ function payloadImportsFamily(filePath, cfg, newText, existingFileText) {
     const normalized = filePath.replace(/\\/g, '/');
     const cwd = process.cwd().replace(/\\/g, '/');
     const body = (newText || '') + '\n' + (existingFileText || '');
-    for (const f of families) {
-        if (!f || !Array.isArray(f.mustRead)) continue;
-        if (!shared.matchesGlobAny(normalized, f.glob)) continue;
-        for (const must of f.mustRead) {
-            const absMust = path.resolve(cwd, must).replace(/\\/g, '/');
-            if (absMust === normalized) continue;
-            // module stem, matched against every import form of the file's language:
-            // `from './base'`, `from pkg.base import`, `use crate::base`, `"pkg/base"`
-            const stem = path.basename(must).replace(/\.[^.]+$/, '');
-            const langId = shared.langIdForFile(filePath) || 'ts';
-            const hit = importsOf(body, langId).some(i =>
-                i.spec.split(/[/.:]+/).filter(Boolean).pop() === stem);
-            if (hit) return { family: f.family, via: must };
-        }
+    // module stems imported in any form of the file's language:
+    // `from './base'`, `from pkg.base import`, `use crate::base`, `"pkg/base"`
+    const stems = new Set(importsOf(body, shared.langIdForFile(filePath) || 'ts')
+        .map(i => i.spec.split(/[/.:]+/).filter(Boolean).pop()));
+    const importsMust = must => path.resolve(cwd, must).replace(/\\/g, '/') !== normalized &&
+        stems.has(path.basename(must).replace(/\.[^.]+$/, ''));
+    for (const f of families.filter(x => x && Array.isArray(x.mustRead) && shared.matchesGlobAny(normalized, x.glob))) {
+        const via = f.mustRead.find(importsMust);
+        if (via) return { family: f.family, via };
     }
     return null;
 }
@@ -213,6 +206,26 @@ function recentExtendOnFile(filePath, cfg) {
 }
 
 // --- emit helpers ----------------------------------------------------------
+
+/** Mode B: the file already belongs to a family — cache it for the session and say so. */
+function emitAlreadyInFamily(cfg, sessionCache, sessionKey, familyMatch, importsHit, recentExtend) {
+    const family = (importsHit && importsHit.family) || (familyMatch && familyMatch.family) || 'existing family';
+    const viaPath = importsHit ? importsHit.via : (recentExtend && recentExtend.pattern);
+    sessionCache[sessionKey] = {
+        family,
+        source: importsHit ? 'imports ' + importsHit.via : 'recent extended on ' + (recentExtend && recentExtend.ts),
+    };
+    writeSessionCache(cfg, sessionCache);
+    const lines = [
+        'PATTERN-CONTEXT: already-in-family',
+        '  family: ' + family + (viaPath ? ' \u2014 via ' + viaPath : ''),
+    ];
+    if (recentExtend) lines.push('  last-extend: ' + (recentExtend.ts || '') + ' \u2014 ' + (recentExtend.reason || '').slice(0, 80));
+    if (importsHit) lines.push('  imports-in-payload: ' + importsHit.via);
+    lines.push('  note: no re-read required; emit `Pattern check: <pattern> \u2014 extended \u2014 continuing existing integration via ' + (viaPath || '<cited path>') + '`.');
+    lines.push('END-PATTERN-CONTEXT');
+    emit(lines);
+}
 
 function prefix(line) { return DRY_RUN ? 'DRY-RUN: ' + line : line; }
 
@@ -263,9 +276,7 @@ function main() {
     const triggeredReasons = shared.detectTriggers(payload, triggers);
 
     // small edit AND no new symbol → nothing substantive to preflight
-    if (shared.isSmallEdit(payload, cfg.blocking.smallEditThreshold)) {
-        if (!shared.hasNewSymbol(payload.newText)) process.exit(0);
-    }
+    if (shared.isSmallEdit(payload, cfg.blocking.smallEditThreshold) && !shared.hasNewSymbol(payload.newText)) process.exit(0);
     if (triggeredReasons.length === 0) process.exit(0);
 
     // I3 exempt glob per family
@@ -294,26 +305,7 @@ function main() {
     const recentExtend = recentExtendOnFile(filePath, cfg);
 
     if (importsHit || recentExtend) {
-        const family = (importsHit && importsHit.family) || (familyMatch && familyMatch.family) || 'existing family';
-        const viaPath = importsHit ? importsHit.via : (recentExtend && recentExtend.pattern);
-        sessionCache[sessionKey] = {
-            family,
-            source: importsHit ? 'imports ' + importsHit.via : 'recent extended on ' + (recentExtend && recentExtend.ts),
-        };
-        writeSessionCache(cfg, sessionCache);
-        const lines = [
-            'PATTERN-CONTEXT: already-in-family',
-            '  family: ' + family + (viaPath ? ' \u2014 via ' + viaPath : ''),
-        ];
-        if (recentExtend) {
-            lines.push('  last-extend: ' + (recentExtend.ts || '') + ' \u2014 ' + (recentExtend.reason || '').slice(0, 80));
-        }
-        if (importsHit) {
-            lines.push('  imports-in-payload: ' + importsHit.via);
-        }
-        lines.push('  note: no re-read required; emit `Pattern check: <pattern> \u2014 extended \u2014 continuing existing integration via ' + (viaPath || '<cited path>') + '`.');
-        lines.push('END-PATTERN-CONTEXT');
-        emit(lines);
+        emitAlreadyInFamily(cfg, sessionCache, sessionKey, familyMatch, importsHit, recentExtend);
         process.exit(0);
     }
 
@@ -331,9 +323,7 @@ function main() {
     if (familyMatch) {
         const mustRead = Array.isArray(familyMatch.mustRead) ? familyMatch.mustRead : [];
         lines.push('  family-hint: ' + (mustRead[0] || '(see usage doc)') + ' (' + familyMatch.family + ')');
-        if (mustRead.length > 1) {
-            for (const p of mustRead.slice(1)) lines.push('    also: ' + p);
-        }
+        for (const p of mustRead.slice(1)) lines.push('    also: ' + p);
     }
     if (siblings.length > 0) {
         lines.push('  siblings:');

@@ -44,50 +44,51 @@ function stringEnd(text, i, langId) {
     return n;
 }
 
+// Token at position i: { end, comment?, skip? } or null (plain code).
+function lineComment(text, i) {
+    const j = text.indexOf('\n', i);
+    return { end: j === -1 ? text.length : j, comment: true };
+}
+
+function blockComment(text, i) {
+    const j = text.indexOf('*/', i + 2);
+    return { end: j === -1 ? text.length : j + 2, comment: true };
+}
+
+function charLiteral(text, i) {
+    const m = /^'(?:\\u\{[0-9a-fA-F]+\}|\\.|[^\\'\n])'/.exec(text.slice(i, i + 12));
+    // not a char literal: a Rust lifetime / generic quote — step over it
+    return m ? { end: i + m[0].length } : { end: i + 1, skip: true };
+}
+
+function tokenAt(text, i, langId) {
+    const ch = text[i];
+    const two = text.slice(i, i + 2);
+    const isPy = langId === 'py';
+    if (isPy ? ch === '#' : two === '//') return lineComment(text, i);
+    if (!isPy && two === '/*') return blockComment(text, i);
+    if (ch === "'" && CHAR_LITERAL_LANGS.has(langId)) return charLiteral(text, i);
+    if (ch === '"' || ch === '`' || ch === "'") return { end: stringEnd(text, i, langId) };
+    return null;
+}
+
 /**
  * Blank comments (and string contents unless `keepStrings`) with spaces,
  * keeping every newline and offset. String delimiters survive, so
  * `x === 'a'` still reads as a comparison when strings are blanked.
  */
 function maskCode(text, langId, keepStrings = false) {
-    const isPy = langId === 'py';
     const out = text.split('');
     const blank = (from, to) => {
         for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' ';
     };
-    const n = text.length;
     let i = 0;
-    while (i < n) {
-        const ch = text[i];
-        const next = text[i + 1];
-        if ((isPy && ch === '#') || (!isPy && ch === '/' && next === '/')) {
-            let j = text.indexOf('\n', i);
-            if (j === -1) j = n;
-            blank(i, j);
-            i = j;
-            continue;
-        }
-        if (!isPy && ch === '/' && next === '*') {
-            const j = text.indexOf('*/', i + 2);
-            const end = j === -1 ? n : j + 2;
-            blank(i, end);
-            i = end;
-            continue;
-        }
-        if (ch === '"' || ch === '`' || ch === "'") {
-            let end;
-            if (ch === "'" && CHAR_LITERAL_LANGS.has(langId)) {
-                const m = /^'(?:\\u\{[0-9a-fA-F]+\}|\\.|[^\\'\n])'/.exec(text.slice(i, i + 12));
-                if (!m) { i++; continue; }
-                end = i + m[0].length;
-            } else {
-                end = stringEnd(text, i, langId);
-            }
-            if (!keepStrings) blank(i + 1, Math.max(i + 1, end - 1));
-            i = end;
-            continue;
-        }
-        i++;
+    while (i < text.length) {
+        const tok = tokenAt(text, i, langId);
+        if (!tok) { i++; continue; }
+        if (tok.comment) blank(i, tok.end);
+        else if (!tok.skip && !keepStrings) blank(i + 1, Math.max(i + 1, tok.end - 1));
+        i = tok.end;
     }
     return out.join('');
 }
@@ -186,50 +187,73 @@ function braceHeader(masked, from, to) {
     };
 }
 
+function openBlock(st, i) {
+    const parent = st.stack[st.stack.length - 1] || null;
+    // `{` inside parens is an expression (object literal, lambda body)
+    const isExpr = st.parenDepth > 0;
+    const h = isExpr ? { head: '', index: i } : braceHeader(st.masked, st.lastDelim, i);
+    const m = BRACE_HEAD_RE.exec(h.head);
+    const kind = m ? kindOfKeyword(m[0].replace(/\s+/g, ' ')) : null;
+    const entry = {
+        kind,
+        head: h.head,
+        headIndex: h.index,
+        line: lineOf(st.masked, h.index),
+        parent,
+        depth: (parent ? parent.depth : 0) + (kind ? 1 : 0),
+        bodyStart: i + 1,
+        bodyEnd: st.masked.length,
+        savedParen: st.parenDepth,
+        savedDelim: st.lastDelim,
+        isExpr,
+    };
+    st.entries.push(entry);
+    st.stack.push(entry);
+    st.parenDepth = 0;
+    st.lastDelim = i + 1;
+}
+
+function closeBlock(st, i) {
+    const entry = st.stack.pop();
+    st.lastDelim = i + 1;
+    if (!entry) return;
+    entry.bodyEnd = i;
+    st.parenDepth = entry.savedParen;
+    // an expression brace doesn't end the enclosing statement's header
+    if (entry.isExpr) st.lastDelim = entry.savedDelim;
+}
+
+const BRACE_STEP = {
+    '(': st => { st.parenDepth++; },
+    ')': st => { st.parenDepth = Math.max(0, st.parenDepth - 1); },
+    ';': (st, i) => { if (st.parenDepth === 0) st.lastDelim = i + 1; },
+    '{': openBlock,
+    '}': closeBlock,
+};
+
 function scanBraceBlocks(masked) {
-    const entries = [];
-    const stack = [];
-    let lastDelim = 0;
-    let parenDepth = 0;
+    const st = { masked, entries: [], stack: [], lastDelim: 0, parenDepth: 0 };
     for (let i = 0; i < masked.length; i++) {
-        const c = masked[i];
-        if (c === '(') parenDepth++;
-        else if (c === ')') parenDepth = Math.max(0, parenDepth - 1);
-        else if (c === ';' && parenDepth === 0) lastDelim = i + 1;
-        else if (c === '{') {
-            const parent = stack[stack.length - 1] || null;
-            // `{` inside parens is an expression (object literal, lambda body)
-            const isExpr = parenDepth > 0;
-            const h = isExpr ? { head: '', index: i } : braceHeader(masked, lastDelim, i);
-            const m = BRACE_HEAD_RE.exec(h.head);
-            const kind = m ? kindOfKeyword(m[0].replace(/\s+/g, ' ')) : null;
-            const entry = {
-                kind,
-                head: h.head,
-                headIndex: h.index,
-                line: lineOf(masked, h.index),
-                parent,
-                depth: (parent ? parent.depth : 0) + (kind ? 1 : 0),
-                bodyStart: i + 1,
-                bodyEnd: masked.length,
-                savedParen: parenDepth,
-                savedDelim: lastDelim,
-                isExpr,
-            };
-            entries.push(entry);
-            stack.push(entry);
-            parenDepth = 0;
-            lastDelim = i + 1;
-        } else if (c === '}') {
-            const entry = stack.pop();
-            if (!entry) { lastDelim = i + 1; continue; }
-            entry.bodyEnd = i;
-            parenDepth = entry.savedParen;
-            // an expression brace doesn't end the enclosing statement's header
-            lastDelim = entry.isExpr ? entry.savedDelim : i + 1;
-        }
+        const step = BRACE_STEP[masked[i]];
+        if (step) step(st, i);
     }
-    return entries;
+    return st.entries;
+}
+
+const OPENERS = new Set(['(', '[', '{']);
+const CLOSERS = new Set([')', ']', '}']);
+
+function bracketDelta(line) {
+    let d = 0;
+    for (const ch of line) d += OPENERS.has(ch) ? 1 : CLOSERS.has(ch) ? -1 : 0;
+    return d;
+}
+
+function extendLogical(buf, line, k) {
+    if (!buf) return { line: k + 1, endLine: k + 1, indent: indentOf(line), text: line.trim() };
+    buf.text += ' ' + line.trim();
+    buf.endLine = k + 1;
+    return buf;
 }
 
 /** Python logical lines: joins bracket continuations and `\` line ends. */
@@ -240,22 +264,13 @@ function pyLogicalLines(masked) {
     let depth = 0;
     for (let k = 0; k < raw.length; k++) {
         const l = raw[k];
-        if (buf === null) {
-            if (!l.trim()) continue;
-            buf = { line: k + 1, endLine: k + 1, indent: indentOf(l), text: l.trim() };
-        } else {
-            buf.text += ' ' + l.trim();
-            buf.endLine = k + 1;
-        }
-        for (const ch of l) {
-            if (ch === '(' || ch === '[' || ch === '{') depth++;
-            else if (ch === ')' || ch === ']' || ch === '}') depth--;
-        }
-        if (depth <= 0 && !/\\\s*$/.test(l)) {
-            out.push(buf);
-            buf = null;
-            depth = 0;
-        }
+        if (buf === null && !l.trim()) continue;
+        buf = extendLogical(buf, l, k);
+        depth += bracketDelta(l);
+        if (depth > 0 || /\\\s*$/.test(l)) continue;
+        out.push(buf);
+        buf = null;
+        depth = 0;
     }
     if (buf) out.push(buf);
     return out;
@@ -266,18 +281,18 @@ function scanPyBlocks(logical) {
     const stack = [];
     logical.forEach((L, idx) => {
         while (stack.length && stack[stack.length - 1].indent >= L.indent) stack.pop();
+        const opensBlock = /:\s*$/.test(L.text);
         // one-line `def f(): ...` / `class E(Exception): pass` — an entry, but no children
-        if (!/:\s*$/.test(L.text)) {
-            if (/^(?:(?:async\s+)?def|class)\s+\w+.*:\s*\S/.test(L.text)) {
-                entries.push({
-                    kind: null, head: L.text, line: L.line, indent: L.indent,
-                    parent: stack[stack.length - 1] || null,
-                    depth: stack.length ? stack[stack.length - 1].depth : 0,
-                    logicalIndex: idx, bodyTo: idx + 1, endLine: L.endLine, oneLiner: true,
-                });
-            }
-            return;
+        const oneLiner = !opensBlock && /^(?:(?:async\s+)?def|class)\s+\w+.*:\s*\S/.test(L.text);
+        if (oneLiner) {
+            entries.push({
+                kind: null, head: L.text, line: L.line, indent: L.indent,
+                parent: stack[stack.length - 1] || null,
+                depth: stack.length ? stack[stack.length - 1].depth : 0,
+                logicalIndex: idx, bodyTo: idx + 1, endLine: L.endLine, oneLiner: true,
+            });
         }
+        if (!opensBlock) return;
         const parent = stack[stack.length - 1] || null;
         const m = PY_HEAD_RE.exec(L.text);
         const kind = m ? kindOfKeyword(m[1]) : null;
@@ -342,16 +357,25 @@ const NOT_A_NAME = new Set([
 ]);
 const CLASS_KW_RE = /\b(class|struct|interface|trait|enum|record|namespace|union|impl|extension|object|module)\b/;
 
+// receiver-ish parameters that are not part of a function's real arity
+const NOT_A_PARAM = {
+    py: /^(?:self|cls)\b/,
+    rust: /^&?(?:'\w+\s+)?(?:mut\s+)?self\b/,
+    ts: /^this\s*:/,
+};
+
+/** Drop `void`, `*` / `/` separators, `...`, and self / cls / this receivers. */
+function cleanParams(list, langId) {
+    const receiver = NOT_A_PARAM[langId];
+    return list
+        .map(p => p.trim())
+        .filter(p => p && !['void', '...', '*', '/'].includes(p))
+        .filter(p => !receiver || !receiver.test(p));
+}
+
 function paramsFrom(text, openIdx, langId) {
     const close = balancedEnd(text, openIdx);
-    const raw = text.slice(openIdx + 1, close);
-    const params = splitTopLevel(raw).filter(p => {
-        if (p === 'void' || p === '...' || p === '*' || p === '/') return false;
-        if (langId === 'py' && /^(?:self|cls)\b/.test(p)) return false;
-        if (langId === 'rust' && /^&?(?:'\w+\s+)?(?:mut\s+)?self\b/.test(p)) return false;
-        if (langId === 'ts' && /^this\s*:/.test(p)) return false;
-        return true;
-    });
+    const params = cleanParams(splitTopLevel(text.slice(openIdx + 1, close)), langId);
     return { params, close };
 }
 
@@ -366,74 +390,81 @@ function paramName(p, langId) {
     return m ? m[1] : s;
 }
 
+// --- signature parsers: { name, openIdx, receiver } or { name, params } (single-param arrow) ---
+
+function goSignature(head) {
+    const m = /\bfunc\b\s*(?:\(([^()]*)\)\s*)?([A-Za-z_]\w*)?\s*(?:\[[^\]]*\])?\s*\(/.exec(head);
+    if (!m) return null;
+    // `func(a int) {` matched the params as a receiver — anonymous func
+    const anonymous = m[1] !== undefined && m[2] === undefined;
+    if (anonymous) return { name: null, openIdx: head.indexOf('(', m.index), receiver: null };
+    const receiver = m[1] ? (/([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*$/.exec(m[1].replace(/\*/g, '')) || [])[1] : null;
+    return { name: m[2] || null, openIdx: m.index + m[0].length - 1, receiver };
+}
+
+function rustSignature(head) {
+    const m = /\bfn\s+([A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\(/.exec(head);
+    return m ? { name: m[1], openIdx: m.index + m[0].length - 1, receiver: null } : null;
+}
+
+/** Index of the `(` matching the last `)` in text, or -1. */
+function lastParenOpen(text) {
+    let depth = 0;
+    for (let i = text.lastIndexOf(')'); i >= 0; i--) {
+        depth += text[i] === ')' ? 1 : text[i] === '(' ? -1 : 0;
+        if (depth === 0 && text[i] === '(') return i;
+    }
+    return -1;
+}
+
+/** Arrow function / Java lambda with a block body. */
+function arrowSignature(head) {
+    const beforeArrow = head.replace(/\s*(?:=>|->)$/, '');
+    const nm = /(?:^|\s)(?:(?:export|const|let|var|readonly|public|private|protected|static|async)\s+)*([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\b)?/.exec(beforeArrow);
+    const name = nm ? nm[1] : null;
+    const openIdx = /\)\s*(?::[^()]*)?$/.test(beforeArrow) ? lastParenOpen(beforeArrow) : -1;
+    if (openIdx !== -1) return { name, openIdx, receiver: null };
+    const single = /([A-Za-z_$][\w$]*)\s*$/.exec(beforeArrow);
+    return single ? { name, params: [single[1]], receiver: null } : null;
+}
+
+/** `name(`, `Foo::bar(`, `function (` — the first call-shaped identifier that is a real name. */
+function namedSignature(head) {
+    const re = /([A-Za-z_$~][\w$]*(?:::~?[A-Za-z_]\w*)*)\s*(?:<[^()]*>)?\s*\(/g;
+    let found = null;
+    let m;
+    while ((m = re.exec(head)) !== null) {
+        const last = m[1].split('::').pop();
+        if (NOT_A_NAME.has(m[1]) && m[1] !== 'function') continue;
+        found = { name: m[1] === 'function' ? null : m[1], openIdx: m.index + m[0].length - 1, receiver: null };
+        if (!NOT_A_NAME.has(last)) break;
+    }
+    return found;
+}
+
+function cLikeSignature(head) {
+    const firstParen = head.indexOf('(');
+    const pre = firstParen === -1 ? head : head.slice(0, firstParen);
+    if (CLASS_KW_RE.test(pre) || /\bnew\b/.test(pre)) return null;
+    if (/=\s*$/.test(head)) return null; // `T x[] = {` initializer, not a body
+    return /(?:=>|->)$/.test(head) ? arrowSignature(head) : namedSignature(head);
+}
+
+const SIGNATURE = { go: goSignature, rust: rustSignature };
+
 function braceFunction(e, langId) {
     if (e.kind || e.isExpr || !e.head) return null;
     const head = e.head
         .replace(/^(?:@[\w.]+(?:\([^()]*\))?\s*)+/, '')
         .replace(/^(?:\[[^\]]*\]\s*)+/, '');
     if (SCOPE_HEAD_RE.test(head)) return null;
-
-    let name = null;
-    let openIdx = -1;
-    let receiver = null;
-    if (langId === 'go') {
-        const m = /\bfunc\b\s*(?:\(([^()]*)\)\s*)?([A-Za-z_]\w*)?\s*(?:\[[^\]]*\])?\s*\(/.exec(head);
-        if (!m) return null;
-        if (m[1] !== undefined && m[2] === undefined) {
-            // `func(a int) {` matched the params as a receiver — anonymous func
-            openIdx = head.indexOf('(', m.index);
-        } else {
-            receiver = m[1] ? (/([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*$/.exec(m[1].replace(/\*/g, '')) || [])[1] : null;
-            name = m[2] || null;
-            openIdx = m.index + m[0].length - 1;
-        }
-    } else if (langId === 'rust') {
-        const m = /\bfn\s+([A-Za-z_]\w*)\s*(?:<[^()]*>)?\s*\(/.exec(head);
-        if (!m) return null;
-        name = m[1];
-        openIdx = m.index + m[0].length - 1;
-    } else {
-        const firstParen = head.indexOf('(');
-        const pre = firstParen === -1 ? head : head.slice(0, firstParen);
-        if (CLASS_KW_RE.test(pre) || /\bnew\b/.test(pre)) return null;
-        if (/=\s*$/.test(head)) return null; // `T x[] = {` initializer, not a body
-        if (/(?:=>|->)$/.test(head)) {
-            // arrow function / Java lambda with a block body
-            const beforeArrow = head.replace(/\s*(?:=>|->)$/, '');
-            if (/\)\s*(?::[^()]*)?$/.test(beforeArrow)) {
-                const close = beforeArrow.lastIndexOf(')');
-                let depth = 0;
-                for (let i = close; i >= 0; i--) {
-                    if (beforeArrow[i] === ')') depth++;
-                    else if (beforeArrow[i] === '(' && --depth === 0) { openIdx = i; break; }
-                }
-            }
-            const nm = /(?:^|\s)(?:(?:export|const|let|var|readonly|public|private|protected|static|async)\s+)*([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\b)?/.exec(beforeArrow);
-            name = nm ? nm[1] : null;
-            if (openIdx === -1) {
-                const single = /([A-Za-z_$][\w$]*)\s*$/.exec(beforeArrow);
-                return single
-                    ? mkBraceFn(e, name, [single[1]], head, '', null)
-                    : null;
-            }
-        } else {
-            const re = /([A-Za-z_$~][\w$]*(?:::~?[A-Za-z_]\w*)*)\s*(?:<[^()]*>)?\s*\(/g;
-            let m;
-            while ((m = re.exec(head)) !== null) {
-                const last = m[1].split('::').pop();
-                if (NOT_A_NAME.has(m[1]) && m[1] !== 'function') continue;
-                name = m[1] === 'function' ? null : m[1];
-                openIdx = m.index + m[0].length - 1;
-                if (!NOT_A_NAME.has(last)) break;
-            }
-            if (openIdx === -1) return null;
-        }
-    }
-    if (openIdx === -1) return null;
-    const { params } = paramsFrom(head, openIdx, langId);
-    const nameIdx = name ? head.lastIndexOf(name, openIdx) : openIdx;
-    const modifiers = head.slice(0, Math.max(0, nameIdx)).trim();
-    return mkBraceFn(e, name, params, head, modifiers, receiver);
+    const sig = (SIGNATURE[langId] || cLikeSignature)(head);
+    if (!sig) return null;
+    if (sig.params) return mkBraceFn(e, sig.name, sig.params, head, '', null);
+    if (sig.openIdx === -1) return null;
+    const { params } = paramsFrom(head, sig.openIdx, langId);
+    const nameIdx = sig.name ? head.lastIndexOf(sig.name, sig.openIdx) : sig.openIdx;
+    return mkBraceFn(e, sig.name, params, head, head.slice(0, Math.max(0, nameIdx)).trim(), sig.receiver);
 }
 
 function mkBraceFn(e, name, params, head, modifiers, receiver) {
@@ -501,10 +532,8 @@ function classHead(e, langId) {
         const m = /\btype\s+([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s+(struct|interface)\b/.exec(head);
         return m ? { name: m[1], kind: m[2] } : null;
     }
-    if (langId === 'rust') {
-        const imp = /^(?:unsafe\s+)?impl\b(?:\s*<[^{]*?>)?\s+(?:([\w:]+)(?:<[^{]*?>)?\s+for\s+)?([\w:]+)/.exec(head);
-        if (imp) return { name: imp[2].split('::').pop(), kind: 'impl', trait: imp[1] || null };
-    }
+    const imp = langId === 'rust' && /^(?:unsafe\s+)?impl\b(?:\s*<[^{]*?>)?\s+(?:([\w:]+)(?:<[^{]*?>)?\s+for\s+)?([\w:]+)/.exec(head);
+    if (imp) return { name: imp[2].split('::').pop(), kind: 'impl', trait: imp[1] || null };
     const firstParen = head.indexOf('(');
     const pre = firstParen === -1 ? head : head.slice(0, firstParen);
     const m = CLASS_DECL_RE.exec(pre);
@@ -580,79 +609,86 @@ function extractClasses(scan, fns = extractFunctions(scan)) {
         if (!byName.has(name)) byName.set(name, { name, kind: 'struct', line: seed.line, entry: null, methods: [], abstract: false, bases: '' });
         return byName.get(name);
     };
-
     if (langId === 'py') {
-        for (const e of scan.entries) {
-            const m = /^class\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?\s*:/.exec(e.head);
-            if (!m) continue;
-            const cls = get(m[1], e);
-            Object.assign(cls, { kind: 'class', line: e.line, entry: e, bases: m[2] || '' });
-            cls.abstract = /\b(?:ABC|ABCMeta|Protocol)\b/.test(cls.bases);
-        }
-        for (const fn of fns) {
-            const p = fn.entry.parent;
-            if (!p || !/^class\b/.test(p.head)) continue;
-            const cls = byName.get(/^class\s+([A-Za-z_]\w*)/.exec(p.head)[1]);
-            fn.className = cls.name;
-            fn.abstract = /@(?:abc\.)?abstractmethod\b/.test(fn.modifiers);
-            if (fn.abstract) cls.abstract = true;
-            cls.methods.push(fn);
-        }
+        pyClasses(scan, fns, get, byName);
         scan.classes = Array.from(byName.values());
         return scan.classes;
     }
 
     for (const e of scan.entries) {
         const h = classHead(e, langId);
-        if (!h) continue;
-        const cls = get(h.name, e);
-        if (h.kind !== 'impl' || !cls.entry) {
-            Object.assign(cls, { kind: h.kind === 'impl' ? cls.kind : h.kind, line: cls.entry ? cls.line : e.line });
-        }
-        if (!cls.entry || h.kind !== 'impl') cls.entry = cls.entry || e;
-        (cls.entries = cls.entries || []).push(e);
-        e.classOf = cls;
-        cls.abstract = cls.abstract || /\babstract\b/.test(e.head) || h.kind === 'interface' || h.kind === 'trait';
+        if (h) registerClass(get(h.name, e), h, e);
     }
-
     for (const fn of fns) {
-        let owner = null;
-        if (langId === 'go' && fn.receiver) owner = get(fn.receiver, fn);
-        else if (fn.name.includes('::')) owner = get(fn.name.split('::').slice(-2)[0], fn);
-        else {
-            for (let p = fn.entry.parent; p; p = p.parent) {
-                if (p.classOf) { owner = p.classOf; break; }
-                if (p.fn) break; // nested function, not a method
-                if (/\bnew\s+[\w.<>]+\s*\(.*\)$/.test(p.head)) break; // anonymous class body
-            }
-        }
+        const owner = methodOwner(fn, langId, get);
         if (!owner) continue;
         fn.className = owner.name;
         owner.methods.push(fn);
-        if (langId === 'cpp' && owner.entry && fn.entry.parent === owner.entry) {
-            fn.access = cppAccess(scan, owner, fn.entry.headIndex - owner.entry.bodyStart);
-        }
+        const inlineCpp = langId === 'cpp' && owner.entry && fn.entry.parent === owner.entry;
+        if (inlineCpp) fn.access = cppAccess(scan, owner, fn.entry.headIndex - owner.entry.bodyStart);
     }
+    const declared = [...byName.values()].flatMap(cls =>
+        (cls.entries || []).flatMap(e => declaredMethods({ ...cls, entry: e }, scan).map(d => [cls, e, d])));
+    for (const [cls, e, d] of declared) addDeclared(scan, cls, e, d);
 
-    for (const cls of byName.values()) {
-        for (const e of cls.entries || []) {
-            for (const d of declaredMethods({ ...cls, entry: e }, scan)) {
-                if (langId === 'cpp') d.access = cppAccess(scan, { ...cls, entry: e }, d.offset || 0);
-                const defined = cls.methods.find(m => m.name.split('::').pop() === d.name);
-                if (defined) {
-                    // out-of-line C++ definition: inherit the declaration's access
-                    if (defined.access === undefined) defined.access = d.access;
-                    continue;
-                }
-                d.className = cls.name;
-                d.line = lineOf(scan.masked, e.bodyStart + (d.offset || 0));
-                if (d.abstract) cls.abstract = true;
-                cls.methods.push(d);
-            }
-        }
-    }
     scan.classes = Array.from(byName.values());
     return scan.classes;
+}
+
+function pyClasses(scan, fns, get, byName) {
+    for (const e of scan.entries) {
+        const m = /^class\s+([A-Za-z_]\w*)\s*(?:\(([^)]*)\))?\s*:/.exec(e.head);
+        if (!m) continue;
+        const cls = get(m[1], e);
+        Object.assign(cls, { kind: 'class', line: e.line, entry: e, bases: m[2] || '' });
+        cls.abstract = /\b(?:ABC|ABCMeta|Protocol)\b/.test(cls.bases);
+    }
+    for (const fn of fns) {
+        const p = fn.entry.parent;
+        if (!p || !/^class\b/.test(p.head)) continue;
+        const cls = byName.get(/^class\s+([A-Za-z_]\w*)/.exec(p.head)[1]);
+        fn.className = cls.name;
+        fn.abstract = /@(?:abc\.)?abstractmethod\b/.test(fn.modifiers);
+        cls.abstract = cls.abstract || fn.abstract;
+        cls.methods.push(fn);
+    }
+}
+
+/** A class / struct / impl entry; Rust impls merge into the struct they implement. */
+function registerClass(cls, h, e) {
+    const isImpl = h.kind === 'impl';
+    if (!isImpl || !cls.entry) Object.assign(cls, { kind: isImpl ? cls.kind : h.kind, line: cls.entry ? cls.line : e.line });
+    if (!cls.entry || !isImpl) cls.entry = cls.entry || e;
+    (cls.entries = cls.entries || []).push(e);
+    e.classOf = cls;
+    cls.abstract = cls.abstract || /\babstract\b/.test(e.head) || h.kind === 'interface' || h.kind === 'trait';
+}
+
+const ANON_CLASS_RE = /\bnew\s+[\w.<>]+\s*\(.*\)$/;
+
+/** Owning class: Go receiver, C++ `Foo::bar`, or the nearest enclosing class entry. */
+function methodOwner(fn, langId, get) {
+    if (langId === 'go' && fn.receiver) return get(fn.receiver, fn);
+    if (fn.name.includes('::')) return get(fn.name.split('::').slice(-2)[0], fn);
+    for (let p = fn.entry.parent; p; p = p.parent) {
+        if (p.classOf) return p.classOf;
+        // a nested function or an anonymous class body ends the search
+        if (p.fn || ANON_CLASS_RE.test(p.head)) return null;
+    }
+    return null;
+}
+
+/** A bodiless declaration (abstract, pure virtual, trait method) unless it is defined elsewhere. */
+function addDeclared(scan, cls, e, d) {
+    if (scan.langId === 'cpp') d.access = cppAccess(scan, { ...cls, entry: e }, d.offset || 0);
+    const defined = cls.methods.find(m => m.name.split('::').pop() === d.name);
+    // out-of-line C++ definition: inherit the declaration's access
+    if (defined && defined.access === undefined) defined.access = d.access;
+    if (defined) return;
+    d.className = cls.name;
+    d.line = lineOf(scan.masked, e.bodyStart + (d.offset || 0));
+    cls.abstract = cls.abstract || d.abstract;
+    cls.methods.push(d);
 }
 
 /** Constructors across languages. */
@@ -698,22 +734,17 @@ function importsOf(text, langId) {
     const src = maskCode(text || '', langId, true);
     const out = [];
     const seen = new Set();
-    let goBlock = null;
-    if (langId === 'go') {
-        const b = /\bimport\s*\(([^)]*)\)/.exec(src);
-        goBlock = b ? { from: b.index, to: b.index + b[0].length } : null;
-    }
-    for (const re of IMPORT_RES[langId] || IMPORT_RES.ts) {
-        re.lastIndex = 0;
-        let m;
-        while ((m = re.exec(src)) !== null) {
-            // the bare `"pkg"` form only counts inside a Go import ( … ) block
-            if (langId === 'go' && !/^\s*import/.test(m[0]) && !(goBlock && m.index > goBlock.from && m.index < goBlock.to)) continue;
-            const key = m[1] + '@' + m.index;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            out.push({ spec: m[1], line: lineOf(src, m.index + m[0].indexOf(m[1])) });
-        }
+    const block = langId === 'go' ? /\bimport\s*\(([^)]*)\)/.exec(src) : null;
+    const goBlock = block ? { from: block.index, to: block.index + block[0].length } : null;
+    // the bare `"pkg"` form only counts inside a Go import ( … ) block
+    const strayGoSpec = m => langId === 'go' && !/^\s*import/.test(m[0]) &&
+        !(goBlock && m.index > goBlock.from && m.index < goBlock.to);
+    const matches = (IMPORT_RES[langId] || IMPORT_RES.ts).flatMap(re => [...src.matchAll(new RegExp(re.source, re.flags))]);
+    for (const m of matches) {
+        const key = m[1] + '@' + m.index;
+        if (strayGoSpec(m) || seen.has(key)) continue;
+        seen.add(key);
+        out.push({ spec: m[1], line: lineOf(src, m.index + m[0].indexOf(m[1])) });
     }
     return out.sort((a, b) => a.line - b.line);
 }
@@ -779,6 +810,8 @@ function applyEdit(currentText, tool, toolInput) {
 
 module.exports = {
     maskCode,
+    pyLogicalLines,
+    cleanParams,
     lineOf,
     countChar,
     indentOf,

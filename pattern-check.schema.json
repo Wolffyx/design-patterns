@@ -126,6 +126,8 @@
         "elseAfterReturn": { "type": "boolean", "description": "Flag `else`/`elif` after a branch ending in return/throw/raise/continue/break." },
         "conditionalLadderMinBranches": { "type": "integer", "minimum": 0, "description": "if/else-if chain on one subject with ≥ N literal branches → dispatch map. 0 disables." },
         "scatteredDiscriminatorMinSites": { "type": "integer", "minimum": 0, "description": "Same subject compared to string/enum literals at ≥ N sites → State/Strategy. 0 disables." },
+        "parser": { "type": "string", "enum": ["auto", "tree-sitter", "regex"], "description": "Scanning backend. 'auto' (default) uses tree-sitter when installed (node scripts/install-parsers.js), else regex." },
+        "parserPath": { "type": "string", "description": "Directory the parsers were installed into with --dir (default ~/.claude/design-patterns/parsers)." },
         "scope": { "type": "string", "enum": ["edited", "file"], "description": "'edited' (default) reports smells only on lines an Edit/MultiEdit wrote, or in the class/function it touched; 'file' reports the whole file. A Write always reports the whole file." },
         "controlFlowScope": { "type": "string", "enum": ["edited", "file"], "description": "Deprecated alias of `scope`." },
         "severity": {
@@ -150,7 +152,18 @@
             "lazyLoad": { "type": "boolean", "description": "Flag relation reads on ORM rows fetched without eager loading (Python / Java / C# / TypeORM)." },
             "resolvers": { "type": "boolean", "description": "Flag GraphQL field resolvers that query once per parent (unless a DataLoader is present)." },
             "extraCallPatterns": { "type": "array", "items": { "type": "string" }, "description": "Extra regex sources for project-specific I/O calls (high confidence)." },
-            "dataAccessReceivers": { "type": "string", "description": "Regex source replacing the default data-access receiver names (repo, client, api, db, …)." }
+            "dataAccessReceivers": { "type": "string", "description": "Regex source replacing the default data-access receiver names (repo, client, api, db, …)." },
+            "crossFile": {
+              "type": "object",
+              "description": "Follow imported functions, namespaces and injected services into other files to find I/O behind them.",
+              "properties": {
+                "enabled": { "type": "boolean" },
+                "maxDepth": { "type": "integer", "minimum": 1, "description": "Files deep to follow (edited → service → repository = 2)." },
+                "timeBudgetMs": { "type": "integer", "minimum": 0, "description": "Stop resolving after this long; findings so far still count." },
+                "cachePath": { "type": "string", "description": "Per-file I/O index cache, invalidated by file / dependency mtimes." }
+              },
+              "additionalProperties": false
+            }
           },
           "additionalProperties": false
         },

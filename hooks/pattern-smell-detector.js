@@ -43,6 +43,9 @@ const scanLib = require('./_code-scan');
 const smells = require('./_smells');
 const corpus = require('./_smell-corpus');
 
+main().catch(() => process.exit(0)); // advisory hook: never fail the tool call
+
+async function main() {
 const raw = shared.readStdin();
 const input = raw && shared.safeJson(raw);
 if (!input) process.exit(0);
@@ -63,7 +66,7 @@ try { fileText = fs.readFileSync(filePath, 'utf8'); } catch { process.exit(0); }
 if (!fileText) process.exit(0);
 
 const fileRel = filePath.replace(/\\/g, '/').replace(/^.*\/(apps|packages)\//, '$1/');
-const all = smells.runAll(fileText, filePath, s);
+const all = await smells.runAll(fileText, filePath, s);
 const ranges = s.scope === 'file' ? null : scanLib.editedLineRanges(fileText, tool, toolInput);
 const { report, suppressed } = smells.select(all, fileText, ranges, s);
 
@@ -71,12 +74,15 @@ for (const f of report) process.stderr.write(smells.formatFinding(fileRel, f));
 smells.logFindings(cfg, filePath,
     report.map(f => ({ f, suppressed: false })).concat(suppressed.map(f => ({ f, suppressed: true }))));
 
-// cross-file matches — fed with every unsuppressed finding in the file
-if (s.crossFile && s.crossFile.enabled) {
-    const whole = smells.select(all, fileText, null, s).report;
-    const matches = corpus.update(s.crossFile, path.resolve(filePath), whole);
+if (s.crossFile && s.crossFile.enabled) reportCrossFileShapes(s, filePath, smells.select(all, fileText, null, s).report);
+
+process.exit(0);
+}
+
+/** Same smell shape in ≥ 2 files — fed with every unsuppressed finding in the file. */
+function reportCrossFileShapes(s, filePath, findings) {
+    const matches = corpus.update(s.crossFile, path.resolve(filePath), findings).filter(m => m.files.length >= 2);
     for (const m of matches) {
-        if (m.files.length < 2) continue;
         process.stderr.write(
             `[pattern-smell] cross-file: ${m.smellId} signature \`${m.signature}\` ` +
             `appears in ${m.files.length} files: ${m.files.join(', ')}\n` +
@@ -84,5 +90,3 @@ if (s.crossFile && s.crossFile.enabled) {
         );
     }
 }
-
-process.exit(0);

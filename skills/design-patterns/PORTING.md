@@ -39,6 +39,9 @@ Copy these directories and files **as-is** — no edits needed:
 .claude/hooks/_gof-smells.js
 .claude/hooks/_function-smells.js
 .claude/hooks/_nplusone.js
+.claude/hooks/_io-calls.js
+.claude/hooks/_io-index.js
+.claude/hooks/_ts-scan.js              # optional tree-sitter backend (parsers: scripts/install-parsers.js)
 ```
 
 ## Step 2. Create the project-usage doc

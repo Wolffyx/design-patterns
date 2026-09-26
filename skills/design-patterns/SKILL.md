@@ -269,7 +269,9 @@ they differ from the 50-line judgement rule: `references/hook-protocol.md`.
   a real path.
 
 **`[pattern-smell]` lines** (after the write, advisory). They cover only the
-lines your edit touched. Fix the smell in the same change when it is yours
+lines your edit touched. An N+1 finding may point into another file
+(`does .findUnique(, src/user-store.ts:3`): add a batch method along that
+chain and call it once, before the loop. Fix the smell in the same change when it is yours
 to fix. When it is intentional, add `// pattern-smell: ignore <smell-id>`
 (`#` in Python) with a reason on the line or the line above. Don't
 suppress to make the message go away.

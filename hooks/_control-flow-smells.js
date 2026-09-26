@@ -22,7 +22,7 @@
 'use strict';
 
 const {
-    maskCode, lineOf, indentOf, SCOPE_HEAD_RE,
+    maskCode, lineOf, indentOf, balancedEnd, extractFunctions, SCOPE_HEAD_RE,
 } = require('./_code-scan');
 
 // --- nested-if + deep-nesting -----------------------------------------------
@@ -38,52 +38,77 @@ function branchParent(e) {
     return p;
 }
 
+// A function (or lambda) body starts a fresh nesting count, like ESLint's max-depth.
+function isBoundary(p) {
+    return Boolean(p.fn) || p.isExpr;
+}
+
+function ctlDepth(e) {
+    let d = 0;
+    for (let p = e; p && !isBoundary(p); p = p.parent) d += p.kind ? 1 : 0;
+    return d;
+}
+
+function outermostCtl(e) {
+    let root = e;
+    for (let p = e.parent; p && !isBoundary(p); p = p.parent) root = p.kind ? p : root;
+    return root;
+}
+
+function nestedIfFinding(e) {
+    const outer = branchParent(e);
+    const nested = e.kind === 'if' && isPlainIf(e.head) && outer && outer.kind === 'if' && !outer.nestedIfReported;
+    if (!nested) return null;
+    outer.nestedIfReported = true;
+    const viaElse = /^else\s*:?$/.test(outer.head);
+    return {
+        smellId: 'nested-if',
+        line: e.line,
+        message: viaElse
+            ? '`if` nested in bare `else` block'
+            : `\`if\` nested in \`if\` (outer at line ${outer.line})`,
+        suggest: viaElse
+            ? '`else if` / `elif`, or invert the outer condition into a guard clause'
+            : 'a guard clause (invert + early return/continue) or one merged condition',
+        refSlug: 'control-flow',
+        signature: 'nested-if',
+    };
+}
+
+const deepMessage = (depth, max, rootLine) =>
+    `control-flow nesting depth ${depth} (max ${max}) in block starting line ${rootLine}`;
+
+/** One finding per outermost block; later, deeper entries only raise its reported depth. */
+function deepNestingFinding(e, maxDepth) {
+    const depth = ctlDepth(e);
+    if (maxDepth <= 0 || depth <= maxDepth) return null;
+    const root = outermostCtl(e);
+    const existing = root.deepFinding;
+    if (existing && depth > existing.depthSeen) {
+        existing.depthSeen = depth;
+        existing.message = deepMessage(depth, maxDepth, root.line);
+    }
+    if (existing) return null;
+    root.deepFinding = {
+        smellId: 'deep-nesting',
+        line: e.line,
+        depthSeen: depth,
+        message: deepMessage(depth, maxDepth, root.line),
+        suggest: 'guard clauses, extracting the inner block to a function, or a dispatch map / Strategy when branches select behavior',
+        refSlug: 'control-flow',
+        signature: 'deep-nesting',
+    };
+    return root.deepFinding;
+}
+
 function detectNesting(scan, maxDepth, flagNestedIf) {
+    extractFunctions(scan); // marks function entries (e.fn): nesting restarts inside them
     const findings = [];
-    for (const e of scan.entries) {
-        if (!e.kind) continue;
-
-        const outer = branchParent(e);
-        if (flagNestedIf && e.kind === 'if' && isPlainIf(e.head) &&
-            outer && outer.kind === 'if' && !outer.nestedIfReported) {
-            outer.nestedIfReported = true;
-            const viaElse = /^else\s*:?$/.test(outer.head);
-            findings.push({
-                smellId: 'nested-if',
-                line: e.line,
-                message: viaElse
-                    ? '`if` nested in bare `else` block'
-                    : `\`if\` nested in \`if\` (outer at line ${outer.line})`,
-                suggest: viaElse
-                    ? '`else if` / `elif`, or invert the outer condition into a guard clause'
-                    : 'a guard clause (invert + early return/continue) or one merged condition',
-                refSlug: 'control-flow',
-                signature: 'nested-if',
-            });
-        }
-
-        if (maxDepth > 0 && e.depth > maxDepth) {
-            let root = e;
-            while (root.parent && root.parent.depth > 0) root = root.parent;
-            if (root.deepFinding) {
-                if (e.depth > root.deepFinding.depthSeen) {
-                    root.deepFinding.depthSeen = e.depth;
-                    root.deepFinding.message =
-                        `control-flow nesting depth ${e.depth} (max ${maxDepth}) in block starting line ${root.line}`;
-                }
-                continue;
-            }
-            root.deepFinding = {
-                smellId: 'deep-nesting',
-                line: e.line,
-                depthSeen: e.depth,
-                message: `control-flow nesting depth ${e.depth} (max ${maxDepth}) in block starting line ${root.line}`,
-                suggest: 'guard clauses, extracting the inner block to a function, or a dispatch map / Strategy when branches select behavior',
-                refSlug: 'control-flow',
-                signature: 'deep-nesting',
-            };
-            findings.push(root.deepFinding);
-        }
+    for (const e of scan.entries.filter(x => x.kind)) {
+        const nested = flagNestedIf ? nestedIfFinding(e) : null;
+        const deep = deepNestingFinding(e, maxDepth);
+        if (nested) findings.push(nested);
+        if (deep) findings.push(deep);
     }
     for (const f of findings) delete f.depthSeen;
     return findings;
@@ -131,6 +156,10 @@ function elseAfterReturnBrace(masked) {
     return findings;
 }
 
+function closeChains(reported, indent) {
+    for (const i of Array.from(reported)) if (i >= indent) reported.delete(i);
+}
+
 function elseAfterReturnPy(logical) {
     const findings = [];
     const exitRe = new RegExp('^(' + EXIT_KW + ')\\b');
@@ -146,9 +175,7 @@ function elseAfterReturnPy(logical) {
         const L = logical[k];
         const next = logical[k + 1];
         // a statement that is not elif/else ends every chain at or below its indent
-        if (!elseRe.test(L.text)) {
-            for (const i of Array.from(reported)) if (i >= L.indent) reported.delete(i);
-        }
+        if (!elseRe.test(L.text)) closeChains(reported, L.indent);
         if (!elseRe.test(next.text)) continue;
 
         // one-liner: `if x: return 1` then `else:` at the same indent
@@ -217,36 +244,30 @@ function hasExhaustiveMarker(body) {
     return /assertNever|assert_never|:\s*never\b|\bexhaustive\b|unreachable/i.test(body);
 }
 
+function pyBlockText(logical, idx) {
+    const out = [];
+    for (let k = idx + 1; k < logical.length && logical[k].indent > logical[idx].indent; k++) out.push(logical[k].text);
+    return out.join('\n');
+}
+
+function pySwitchSites(logical) {
+    return logical
+        .map((L, idx) => ({ m: /^match\s+([A-Za-z_][\w.]*)\s*:$/.exec(L.text), L, idx }))
+        .filter(x => x.m && !hasExhaustiveMarker(pyBlockText(logical, x.idx)))
+        .map(x => ({ subject: x.m[1], line: x.L.line }));
+}
+
 /** Sites of `switch x {` / `x switch {` / `match x:` whose body is not marked exhaustive. */
 function switchSites(text, masked, langId, logical) {
-    const sites = [];
-    if (langId === 'rust') return sites; // `match` is compiler-checked exhaustive
-    if (langId === 'py') {
-        logical.forEach((L, idx) => {
-            const m = /^match\s+([A-Za-z_][\w.]*)\s*:$/.exec(L.text);
-            if (!m) return;
-            let body = '';
-            for (let k = idx + 1; k < logical.length && logical[k].indent > L.indent; k++) body += logical[k].text + '\n';
-            if (!hasExhaustiveMarker(body)) sites.push({ subject: m[1], line: L.line });
-        });
-        return sites;
-    }
+    if (langId === 'rust') return []; // `match` is compiler-checked exhaustive
+    if (langId === 'py') return pySwitchSites(logical);
     const re = /\bswitch\s*\(?\s*([A-Za-z_][\w.]*)\s*\)?\s*\{|([A-Za-z_][\w.]*)\s+switch\s*\{/g;
-    let m;
-    while ((m = re.exec(masked)) !== null) {
-        const open = m.index + m[0].length;
-        let depth = 1;
-        let i = open;
-        while (i < text.length && depth > 0) {
-            if (masked[i] === '{') depth++;
-            else if (masked[i] === '}') depth--;
-            i++;
-        }
-        if (!hasExhaustiveMarker(text.slice(open, i))) {
-            sites.push({ subject: m[1] || m[2], line: lineOf(masked, m.index) });
-        }
-    }
-    return sites;
+    return [...masked.matchAll(re)]
+        .filter(m => {
+            const open = m.index + m[0].length - 1;
+            return !hasExhaustiveMarker(text.slice(open, balancedEnd(masked, open)));
+        })
+        .map(m => ({ subject: m[1] || m[2], line: lineOf(masked, m.index) }));
 }
 
 function detectConditionals(text, scan, langId, ladderMin, scatteredMin) {
@@ -274,33 +295,32 @@ function detectConditionals(text, scan, langId, ladderMin, scatteredMin) {
         }
     }
 
-    for (const [subject, list] of Object.entries(chains)) {
-        if (ladderMin <= 0) break;
-        for (const c of list) {
-            if (c.branches < ladderMin) continue;
-            findings.push({
-                smellId: 'conditional-ladder',
-                line: c.line,
-                message: `if/else-if ladder on \`${subject}\` (${c.branches} branches)`,
-                suggest: 'a dispatch map (Tier 0), or Strategy when each branch carries real behavior',
-                refSlug: 'control-flow',
-                signature: `${subject}|${c.branches}`,
-            });
-        }
-    }
+    const ladders = ladderMin <= 0 ? [] : Object.entries(chains).flatMap(([subject, list]) => list
+        .filter(c => c.branches >= ladderMin)
+        .map(c => ({
+            smellId: 'conditional-ladder',
+            line: c.line,
+            message: `if/else-if ladder on \`${subject}\` (${c.branches} branches)`,
+            suggest: 'a dispatch map (Tier 0), or Strategy when each branch carries real behavior',
+            refSlug: 'control-flow',
+            signature: `${subject}|${c.branches}`,
+        })));
+    findings.push(...ladders);
+    if (scatteredMin > 0) findings.push(...scatteredFindings(text, scan, langId, chains, scatteredMin));
+    return findings;
+}
 
-    if (scatteredMin > 0) {
-        const sites = {};
-        for (const [subject, list] of Object.entries(chains)) {
-            for (const c of list) if (c.named) (sites[subject] = sites[subject] || []).push(c.line);
-        }
-        for (const s of switchSites(text, scan.masked, langId, scan.logical)) {
-            (sites[s.subject] = sites[s.subject] || []).push(s.line);
-        }
-        for (const [subject, lineNos] of Object.entries(sites)) {
-            if (lineNos.length < scatteredMin) continue;
+/** Subjects compared to named literals (and switched on) at ≥ min separate sites. */
+function scatteredFindings(text, scan, langId, chains, min) {
+    const sites = {};
+    const add = (subject, line) => (sites[subject] = sites[subject] || []).push(line);
+    for (const [subject, list] of Object.entries(chains)) list.filter(c => c.named).forEach(c => add(subject, c.line));
+    for (const sw of switchSites(text, scan.masked, langId, scan.logical)) add(sw.subject, sw.line);
+    return Object.entries(sites)
+        .filter(([, lineNos]) => lineNos.length >= min)
+        .map(([subject, lineNos]) => {
             const sorted = lineNos.slice().sort((a, b) => a - b);
-            findings.push({
+            return {
                 smellId: 'scattered-discriminator',
                 line: sorted[0],
                 message: `\`${subject}\` compared to literals at ${sorted.length} sites (lines ${sorted.join(', ')})`,
@@ -308,10 +328,8 @@ function detectConditionals(text, scan, langId, ladderMin, scatteredMin) {
                 refSlug: 'control-flow',
                 signature: `${subject}|${sorted.length}`,
                 sites: sorted,
-            });
-        }
-    }
-    return findings;
+            };
+        });
 }
 
 // --- entry point ------------------------------------------------------------

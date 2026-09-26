@@ -1,0 +1,14 @@
+[
+  {
+    "smellId": "nested-if",
+    "line": 4
+  },
+  {
+    "smellId": "nested-if",
+    "line": 7
+  },
+  {
+    "smellId": "n-plus-one",
+    "line": 10
+  }
+]

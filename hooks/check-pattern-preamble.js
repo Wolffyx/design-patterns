@@ -166,10 +166,7 @@ function citationPathResolves(reason, exts) {
         path.resolve(cwd, 'src', candidate),
         candidate,
     ];
-    for (const t of tries) {
-        try { if (fs.existsSync(t)) return candidate; } catch {}
-    }
-    return null;
+    return tries.some(t => fs.existsSync(t)) ? candidate : null;
 }
 
 // --- main ------------------------------------------------------------------
@@ -221,9 +218,7 @@ if (pathRule && pathRule.action === 'skip') exitAllow();
 const triggers = shared.triggersForPathRule(pathRule, cfg.blocking.substantiveTriggers);
 
 // small edit with no new symbol → allow
-if (shared.isSmallEdit(payload, cfg.blocking.smallEditThreshold)) {
-    if (!shared.hasNewSymbol(payload.newText, langId)) exitAllow();
-}
+if (shared.isSmallEdit(payload, cfg.blocking.smallEditThreshold) && !shared.hasNewSymbol(payload.newText, langId)) exitAllow();
 
 const triggeredReasons = shared.detectTriggers(payload, triggers, langId);
 if (triggeredReasons.length === 0) exitAllow();
@@ -300,48 +295,48 @@ if (reason.length < minLen) {
 
 // --- I1: forbiddenPatterns block on `applied` -----------------------------
 
-if (decision === 'applied' && Array.isArray(cfg.forbiddenPatterns)) {
-    const forbidden = cfg.forbiddenPatterns.find(
-        p => String(p).toLowerCase() === patternName.toLowerCase());
-    if (forbidden) {
-        exitBlock(cfg, {
-            ts: new Date().toISOString(),
-            rule: 'forbidden-pattern',
-            file: filePath.replace(/\\/g, '/'),
-            decision,
-            pattern: patternName,
-            reasonExcerpt: reason.slice(0, 60),
-        }, [
-            'BLOCKED by Rule 0 \u2014 forbidden pattern',
-            '',
-            'Pattern "' + patternName + '" is listed in `.claude/pattern-check.config.json` \u2192 `forbiddenPatterns`.',
-            'Project ethos discourages this pattern here. Prefer an alternative (see project-usage.md).',
-            '',
-            'If the project rule has changed, remove "' + patternName + '" from `forbiddenPatterns` in config.',
-        ].join('\n'));
-    }
+const forbidden = decision === 'applied' && Array.isArray(cfg.forbiddenPatterns)
+    ? cfg.forbiddenPatterns.find(p => String(p).toLowerCase() === patternName.toLowerCase())
+    : null;
+if (forbidden) {
+    exitBlock(cfg, {
+        ts: new Date().toISOString(),
+        rule: 'forbidden-pattern',
+        file: filePath.replace(/\\/g, '/'),
+        decision,
+        pattern: patternName,
+        reasonExcerpt: reason.slice(0, 60),
+    }, [
+        'BLOCKED by Rule 0 \u2014 forbidden pattern',
+        '',
+        'Pattern "' + patternName + '" is listed in `.claude/pattern-check.config.json` \u2192 `forbiddenPatterns`.',
+        'Project ethos discourages this pattern here. Prefer an alternative (see project-usage.md).',
+        '',
+        'If the project rule has changed, remove "' + patternName + '" from `forbiddenPatterns` in config.',
+    ].join('\n'));
 }
 
 // --- I2: antisignal soft warn (non-blocking) ------------------------------
 
-if ((decision === 'applied' || decision === 'extended') && cfg.validation.enforceAntisignals !== false) {
-    const hit = antisignalHit(patternName, reason);
-    if (hit) {
-        writeErr([
-            'WARN (pattern-antisignal): "' + patternName + '" reason matches antisignal phrase: "' + hit + '"',
-            '  Reference: ~/.claude/skills/design-patterns/references/<slug>.md \u2192 "Don\'t use when"',
-            '  (non-blocking; logged as antisignal)',
-        ].join('\n'));
-        appendBlockStat(cfg, {
-            ts: new Date().toISOString(),
-            rule: 'antisignal',
-            file: filePath.replace(/\\/g, '/'),
-            decision,
-            pattern: patternName,
-            antisignal: hit,
-            blocking: false,
-        });
-    }
+const antisignal = (decision === 'applied' || decision === 'extended') && cfg.validation.enforceAntisignals !== false
+    ? antisignalHit(patternName, reason)
+    : null;
+if (antisignal) {
+    const hit = antisignal;
+    writeErr([
+        'WARN (pattern-antisignal): "' + patternName + '" reason matches antisignal phrase: "' + hit + '"',
+        '  Reference: ~/.claude/skills/design-patterns/references/<slug>.md \u2192 "Don\'t use when"',
+        '  (non-blocking; logged as antisignal)',
+    ].join('\n'));
+    appendBlockStat(cfg, {
+        ts: new Date().toISOString(),
+        rule: 'antisignal',
+        file: filePath.replace(/\\/g, '/'),
+        decision,
+        pattern: patternName,
+        antisignal: hit,
+        blocking: false,
+    });
 }
 
 // --- path citation resolver ------------------------------------------------
@@ -350,131 +345,120 @@ const modeBSatisfied = isAlreadyInFamily(cfg, sessionId, filePath);
 
 // --- requireCitationOnExtended --------------------------------------------
 
-if (decision === 'extended' && cfg.validation.requireCitationOnExtended && !modeBSatisfied) {
-    const resolved = citationPathResolves(reason, cfg.blocking.fileExtensions);
-    if (!resolved) {
-        exitBlock(cfg, {
-            ts: new Date().toISOString(),
-            rule: 'extended-missing-citation',
-            file: filePath.replace(/\\/g, '/'),
-            decision,
-            pattern: patternName,
-            reasonExcerpt: reason.slice(0, 80),
-        }, [
-            'BLOCKED by Rule 0 \u2014 `extended` decision must cite a real file path',
-            '',
-            'File: ' + fileName,
-            'Pattern: ' + (patternName || '(unspecified)'),
-            'Reason: "' + reason + '"',
-            '',
-            'Required: reason must include a .' + fileExt + ' path that resolves on disk.',
-            '',
-            'Suggest preamble:',
-            '  Pattern check: ' + (patternName || '<Pattern>') +
-                ' (Tier <N>) \u2014 extended \u2014 mirrors <existing>.' + fileExt + ' via <path/to/base>.' + fileExt,
-            '',
-            'Config toggle: `validation.requireCitationOnExtended` in pattern-check.config.json.',
-        ].join('\n'));
-    }
+const citationMissing = decision === 'extended' && cfg.validation.requireCitationOnExtended && !modeBSatisfied &&
+    !citationPathResolves(reason, cfg.blocking.fileExtensions);
+if (citationMissing) {
+    exitBlock(cfg, {
+        ts: new Date().toISOString(),
+        rule: 'extended-missing-citation',
+        file: filePath.replace(/\\/g, '/'),
+        decision,
+        pattern: patternName,
+        reasonExcerpt: reason.slice(0, 80),
+    }, [
+        'BLOCKED by Rule 0 \u2014 `extended` decision must cite a real file path',
+        '',
+        'File: ' + fileName,
+        'Pattern: ' + (patternName || '(unspecified)'),
+        'Reason: "' + reason + '"',
+        '',
+        'Required: reason must include a .' + fileExt + ' path that resolves on disk.',
+        '',
+        'Suggest preamble:',
+        '  Pattern check: ' + (patternName || '<Pattern>') +
+            ' (Tier <N>) \u2014 extended \u2014 mirrors <existing>.' + fileExt + ' via <path/to/base>.' + fileExt,
+        '',
+        'Config toggle: `validation.requireCitationOnExtended` in pattern-check.config.json.',
+    ].join('\n'));
 }
 
 // --- requireAntiExtendedClauseOnNewClassReject ----------------------------
 
-if (decision === 'rejected' && cfg.validation.requireAntiExtendedClauseOnNewClassReject && !modeBSatisfied) {
-    const newSymbolTriggers = triggeredReasons.filter(
-        r => /new (class|interface|abstract)/i.test(r));
-    if (newSymbolTriggers.length > 0) {
-        const phrases = cfg.validation.antiExtendedPhrases || [];
-        const low = reason.toLowerCase();
-        const found = phrases.find(p => low.includes(String(p).toLowerCase()));
-        if (!found) {
-            exitBlock(cfg, {
-                ts: new Date().toISOString(),
-                rule: 'reject-new-class-missing-scan-clause',
-                file: filePath.replace(/\\/g, '/'),
-                decision,
-                pattern: patternName,
-                reasonExcerpt: reason.slice(0, 80),
-            }, [
-                'BLOCKED by Rule 0 \u2014 rejecting a new class without cross-file scan',
-                '',
-                'File: ' + fileName,
-                'Trigger: ' + newSymbolTriggers.join(', '),
-                '',
-                'A new class/interface/abstract was introduced but reason does not',
-                'indicate any cross-file scan. Include one of these phrases:',
-                '  ' + phrases.join(', '),
-                '',
-                'Suggest preamble:',
-                '  Pattern check: no GoF pattern (-) \u2014 rejected \u2014 scanned siblings, no family match, ' +
-                    'isolated helper; ' + (reason || '<brief why>'),
-                '',
-                'Config toggle: `validation.requireAntiExtendedClauseOnNewClassReject` in pattern-check.config.json.',
-            ].join('\n'));
-        }
-    }
+const newSymbolTriggers = triggeredReasons.filter(r => /new (class|interface|abstract)/i.test(r));
+const phrases = cfg.validation.antiExtendedPhrases || [];
+const scanClauseMissing = decision === 'rejected' && cfg.validation.requireAntiExtendedClauseOnNewClassReject &&
+    !modeBSatisfied && newSymbolTriggers.length > 0 &&
+    !phrases.some(p => reason.toLowerCase().includes(String(p).toLowerCase()));
+if (scanClauseMissing) {
+    exitBlock(cfg, {
+        ts: new Date().toISOString(),
+        rule: 'reject-new-class-missing-scan-clause',
+        file: filePath.replace(/\\/g, '/'),
+        decision,
+        pattern: patternName,
+        reasonExcerpt: reason.slice(0, 80),
+    }, [
+        'BLOCKED by Rule 0 \u2014 rejecting a new class without cross-file scan',
+        '',
+        'File: ' + fileName,
+        'Trigger: ' + newSymbolTriggers.join(', '),
+        '',
+        'A new class/interface/abstract was introduced but reason does not',
+        'indicate any cross-file scan. Include one of these phrases:',
+        '  ' + phrases.join(', '),
+        '',
+        'Suggest preamble:',
+        '  Pattern check: no GoF pattern (-) \u2014 rejected \u2014 scanned siblings, no family match, ' +
+            'isolated helper; ' + (reason || '<brief why>'),
+        '',
+        'Config toggle: `validation.requireAntiExtendedClauseOnNewClassReject` in pattern-check.config.json.',
+    ].join('\n'));
 }
 
 // --- refactor-suggest validation ------------------------------------------
 
-if (decision === 'refactor-suggest') {
-    const needsArrow = cfg.validation.requireArrowOnRefactorSuggest !== false;
-    const minR = cfg.validation.refactorSuggestMinReasonLength || 40;
-    const arrowOk = !needsArrow || /\u2192/.test(reason) || /refactor-candidate/i.test(reason) || /\u2192/.test(patternName);
-    const resolved = citationPathResolves(reason, cfg.blocking.fileExtensions);
-    if (!arrowOk || reason.length < minR || !resolved) {
-        exitBlock(cfg, {
-            ts: new Date().toISOString(),
-            rule: 'refactor-suggest-malformed',
-            file: filePath.replace(/\\/g, '/'),
-            decision,
-            pattern: patternName,
-            reasonExcerpt: reason.slice(0, 80),
-        }, [
-            'BLOCKED by Rule 0 \u2014 `refactor-suggest` decision malformed',
-            '',
-            'Required form:',
-            '  Pattern check: <Current>\u2192<Better> (Tier <N>) \u2014 refactor-suggest \u2014 ' +
-                '<what current does, what better would do, cited .' + fileExt + ' path> (\u2265 ' + minR + ' chars)',
-            '',
-            'Checks: arrow \u2192 present = ' + arrowOk + ', reason \u2265 ' + minR + ' chars = ' +
-                (reason.length >= minR) + ', cited path resolves = ' + Boolean(resolved),
-            '',
-            'Example:',
-            '  Pattern check: Facade\u2192Facade+Strategy (Tier 1) \u2014 refactor-suggest \u2014 ' +
-                'current facade has 12 methods (god-class risk); splitting by action-type Strategy keyed on ' +
-                '<path/to/file>.' + fileExt + ' would isolate dispatch.',
-        ].join('\n'));
-    }
-    // non-blocking echo so the user sees the suggestion live
-    writeErr('REFACTOR-SUGGESTED: ' + patternName + ' \u2014 ' + reason.slice(0, 120));
+const isRefactorSuggest = decision === 'refactor-suggest';
+const minR = cfg.validation.refactorSuggestMinReasonLength || 40;
+const arrowOk = cfg.validation.requireArrowOnRefactorSuggest === false ||
+    /\u2192/.test(reason) || /refactor-candidate/i.test(reason) || /\u2192/.test(patternName);
+const resolved = isRefactorSuggest && citationPathResolves(reason, cfg.blocking.fileExtensions);
+if (isRefactorSuggest && (!arrowOk || reason.length < minR || !resolved)) {
+    exitBlock(cfg, {
+        ts: new Date().toISOString(),
+        rule: 'refactor-suggest-malformed',
+        file: filePath.replace(/\\/g, '/'),
+        decision,
+        pattern: patternName,
+        reasonExcerpt: reason.slice(0, 80),
+    }, [
+        'BLOCKED by Rule 0 \u2014 `refactor-suggest` decision malformed',
+        '',
+        'Required form:',
+        '  Pattern check: <Current>\u2192<Better> (Tier <N>) \u2014 refactor-suggest \u2014 ' +
+            '<what current does, what better would do, cited .' + fileExt + ' path> (\u2265 ' + minR + ' chars)',
+        '',
+        'Checks: arrow \u2192 present = ' + arrowOk + ', reason \u2265 ' + minR + ' chars = ' +
+            (reason.length >= minR) + ', cited path resolves = ' + Boolean(resolved),
+        '',
+        'Example:',
+        '  Pattern check: Facade\u2192Facade+Strategy (Tier 1) \u2014 refactor-suggest \u2014 ' +
+            'current facade has 12 methods (god-class risk); splitting by action-type Strategy keyed on ' +
+            '<path/to/file>.' + fileExt + ' would isolate dispatch.',
+    ].join('\n'));
 }
+// non-blocking echo so the user sees the suggestion live
+if (isRefactorSuggest) writeErr('REFACTOR-SUGGESTED: ' + patternName + ' \u2014 ' + reason.slice(0, 120));
 
 // --- I5: caller-count warn on isolated rejects ----------------------------
 
-if (decision === 'rejected' && cfg.validation.callerCountWarn && /isolated|no-siblings/.test(reason)) {
-    const names = exportedSymbolNames(payload.newText, langId);
-    const candidate = names[0];
-    if (candidate) {
-        const count = callerCount(candidate, cfg, filePath);
-        const threshold = cfg.validation.callerCountThreshold || 3;
-        if (count >= threshold) {
-            writeErr([
-                'WARN (caller-count): `' + candidate + '` has ' + count + '+ existing callers; ',
-                '  "isolated" may be wrong \u2014 consider Strategy/Factory or cite extension.',
-                '  (non-blocking; rejection still stands if you proceed)',
-            ].join('\n'));
-            appendBlockStat(cfg, {
-                ts: new Date().toISOString(),
-                rule: 'caller-count-warn',
-                file: filePath.replace(/\\/g, '/'),
-                decision,
-                symbol: candidate,
-                callers: count,
-                blocking: false,
-            });
-        }
-    }
+const claimsIsolated = decision === 'rejected' && cfg.validation.callerCountWarn && /isolated|no-siblings/.test(reason);
+const candidate = claimsIsolated ? exportedSymbolNames(payload.newText, langId)[0] : null;
+const count = candidate ? callerCount(candidate, cfg, filePath) : 0;
+if (candidate && count >= (cfg.validation.callerCountThreshold || 3)) {
+    writeErr([
+        'WARN (caller-count): `' + candidate + '` has ' + count + '+ existing callers; ',
+        '  "isolated" may be wrong \u2014 consider Strategy/Factory or cite extension.',
+        '  (non-blocking; rejection still stands if you proceed)',
+    ].join('\n'));
+    appendBlockStat(cfg, {
+        ts: new Date().toISOString(),
+        rule: 'caller-count-warn',
+        file: filePath.replace(/\\/g, '/'),
+        decision,
+        symbol: candidate,
+        callers: count,
+        blocking: false,
+    });
 }
 
 exitAllow();

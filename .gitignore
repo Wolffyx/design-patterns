@@ -5,6 +5,7 @@
 # Hook runtime artifacts (created in projects where this is installed)
 .claude/pattern-decision-log.jsonl
 .claude/pattern-block-stats.jsonl
+.claude/pattern-smell-log.jsonl
 
 # Editor / OS
 .DS_Store
@@ -19,3 +20,4 @@ yarn-debug.log*
 
 # claude plugin eval output
 evals/results/
+.parsers/

@@ -28,6 +28,9 @@ const smells = require('./_smells');
 
 const DRY_RUN = process.env.HOOKS_DRY_RUN === '1';
 
+main().catch(() => process.exit(0)); // a crashing gate must not block edits
+
+async function main() {
 const raw = shared.readStdin();
 const input = raw && shared.safeJson(raw);
 if (!input) process.exit(0);
@@ -51,7 +54,7 @@ if (!proposed) process.exit(0);
 const ranges = tool === 'Write'
     ? smells.changedLineRanges(current, proposed)
     : scanLib.editedLineRanges(proposed, tool, toolInput);
-const { report } = smells.select(smells.runAll(proposed, filePath, s), proposed, ranges, s);
+const { report } = smells.select(await smells.runAll(proposed, filePath, s), proposed, ranges, s);
 const blocking = report.filter(f => f.severity === 'block');
 if (!blocking.length) process.exit(0);
 
@@ -80,3 +83,4 @@ const lines = [
 ];
 process.stderr.write(lines.map(l => (DRY_RUN ? 'DRY-RUN: ' + l : l)).join('\n') + '\n');
 process.exit(DRY_RUN ? 0 : 2);
+}

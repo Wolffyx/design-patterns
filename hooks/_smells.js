@@ -7,6 +7,10 @@
  * shared scan, edit scoping, per-smell severity, suppression directives, and
  * the smell log that analyze-log.js reads for tuning suggestions.
  *
+ * Scanning backends: regex (_code-scan.js, always available) or tree-sitter
+ * (_ts-scan.js, opt-in via scripts/install-parsers.js). `smells.parser`:
+ * 'auto' (default: tree-sitter when installed), 'tree-sitter', 'regex'.
+ *
  * Detector modules:
  *   _gof-smells.js           GoF shapes (switch-on-type, god-class, singleton …)
  *   _control-flow-smells.js  nested-if, deep-nesting, else-after-return, ladders
@@ -20,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const shared = require('./_pattern-shared');
 const scanLib = require('./_code-scan');
+const tsScan = require('./_ts-scan');
 const gof = require('./_gof-smells');
 const controlFlow = require('./_control-flow-smells');
 const functions = require('./_function-smells');
@@ -29,6 +34,10 @@ const SEVERITIES = ['off', 'advise', 'block'];
 
 const DEFAULT_SMELLS = {
     enabled: true,
+    // 'auto' (tree-sitter when installed, else regex) | 'tree-sitter' | 'regex'
+    parser: 'auto',
+    // where scripts/install-parsers.js put the parsers ('' = ~/.claude/design-patterns/parsers)
+    parserPath: '',
     // 'edited': report only findings on lines the Edit / MultiEdit wrote (or
     // whose class / function span it touched); 'file': the whole file
     scope: 'edited',
@@ -80,6 +89,13 @@ const DEFAULT_SMELLS = {
         resolvers: true,
         extraCallPatterns: [],
         dataAccessReceivers: '',
+        // follow imported functions / namespaces / injected services into other files
+        crossFile: {
+            enabled: true,
+            maxDepth: 2,
+            timeBudgetMs: 400,
+            cachePath: '.claude/cache/pattern-io-index.json',
+        },
     },
 
     crossFile: {
@@ -104,7 +120,11 @@ function mergeSmells(user) {
             command: { ...d.detectors.command, ...(det.command || {}) },
             templateMethod: { ...d.detectors.templateMethod, ...(det.templateMethod || {}) },
         },
-        nPlusOne: { ...d.nPlusOne, ...(u.nPlusOne || {}) },
+        nPlusOne: {
+            ...d.nPlusOne,
+            ...(u.nPlusOne || {}),
+            crossFile: { ...d.nPlusOne.crossFile, ...((u.nPlusOne || {}).crossFile || {}) },
+        },
         crossFile: { ...d.crossFile, ...(u.crossFile || {}) },
     };
     // v1.1 alias: controlFlowScope → scope
@@ -135,19 +155,39 @@ function inScopeFile(filePath, cfg) {
     return !(cfg.blocking.excludeGlobs || []).some(g => shared.matchesGlob(filePath, g));
 }
 
+let parserHintShown = false;
+
+/** Scan model from the configured backend; tree-sitter falls back to regex. */
+async function buildScan(text, langId, filePath, s) {
+    const wantAst = s.parser !== 'regex';
+    const ast = wantAst ? await tsScan.scan(text, langId, filePath, s.parserPath) : null;
+    if (ast) return ast;
+    if (s.parser === 'tree-sitter' && !parserHintShown) {
+        parserHintShown = true;
+        process.stderr.write('[pattern-smell] smells.parser is "tree-sitter" but the parsers are not installed ' +
+            '\u2014 using regex scanning. Install: node <plugin>/scripts/install-parsers.js\n');
+    }
+    return scanLib.scanBlocks(text, langId);
+}
+
 /**
  * Every finding in `text` (unscoped, unsuppressed).
- * @returns {Array<{smellId, line, message, suggest, refSlug, signature, span?, sites?, confidence?}>}
+ * @returns {Promise<Array<{smellId, line, message, suggest, refSlug, signature, span?, sites?, confidence?}>>}
  */
-function runAll(text, filePath, s) {
+async function runAll(text, filePath, s) {
     const langId = shared.langIdForFile(filePath);
     if (!langId || !text) return [];
-    const scan = scanLib.scanBlocks(text, langId);
+    const scan = await buildScan(text, langId, filePath, s);
+    return detectAll(scan, filePath, s);
+}
+
+/** Run every detector module on a prepared scan. */
+function detectAll(scan, filePath, s) {
     const out = [];
     out.push(...gof.detectAll(scan, filePath, s));
     out.push(...controlFlow.detectAll(scan, s));
     out.push(...functions.detectAll(scan, s));
-    out.push(...nPlusOne.detect(scan, s.nPlusOne));
+    out.push(...nPlusOne.detect(scan, s.nPlusOne, filePath));
     return out.sort((a, b) => a.line - b.line);
 }
 
@@ -226,7 +266,9 @@ module.exports = {
     severityOf,
     anyBlocking,
     inScopeFile,
+    buildScan,
     runAll,
+    detectAll,
     select,
     changedLineRanges,
     formatFinding,

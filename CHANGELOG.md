@@ -45,6 +45,20 @@ versioning: [SemVer](https://semver.org/).
 - **Eval suite** (`evals/`) for `claude plugin eval`: behavior checks for the
   N+1 branches rule, N+1 queries, guard clauses, error handling and
   anti-overuse.
+- **Cross-file N+1** (`_io-index.js`): follows imports, namespaces and
+  injected services (typed fields / constructor params) into other files,
+  up to two files deep, in all seven languages; per-file I/O index cached on
+  disk and invalidated by file / dependency mtimes. Messages name where the
+  round-trip really happens (`does .findUnique(, src/user-store.ts:3`).
+- **Optional tree-sitter backend** (`_ts-scan.js`, `scripts/install-parsers.js`,
+  `smells.parser`): one WASM package with all seven grammars, installed
+  outside the plugin; builds the same scan model from real syntax trees
+  (brace-less nested ifs and loops, exact masking and function boundaries).
+  Falls back to regex scanning when absent. `install.sh --with-parsers`.
+- **Dogfood test**: the hooks, scripts and test runners must pass
+  nested-if / deep-nesting / else-after-return on both backends.
+- Cross-file N+1 tests (one multi-file project per language, including cache
+  invalidation) and AST-only golden fixtures.
 - Tier 0 conventions, approved exceptions and severity policy sections in
   the project-usage template.
 - `CHANGELOG.md`.
@@ -58,6 +72,11 @@ versioning: [SemVer](https://semver.org/).
   it touched (`smells.scope: "edited"`, default). `controlFlowScope` is a
   deprecated alias.
 - `repeated-new` ignores exception and standard-library types.
+- Nesting depth restarts inside every function / lambda body (like ESLint
+  `max-depth`) instead of counting across closures.
+- The existing hooks were refactored to follow the control-flow rules:
+  dispatch maps (`BRACE_STEP`, `SIGNATURE`, `LOOP_SHAPES`, `FUNCTION_CHECKS`),
+  guard clauses and extracted helpers instead of nested ifs.
 - SKILL.md trimmed from ~420 to ~300 lines: the decision tree and catalog
   moved to `references/catalog.md`, hook mechanics to
   `references/hook-protocol.md`. Singleton is marked "rejected by default".
@@ -74,7 +93,7 @@ versioning: [SemVer](https://semver.org/).
   `from '…'`; it now reads every language's import form.
 - TypeScript-only wording in the preamble and log hooks and in
   `/pattern-review` (which only scanned `.ts` files).
-- Literal `—` escapes in `PORTING.md`.
+- Literal `\u2014` escape sequences (22 of them) in `PORTING.md` rendered as raw text.
 - `instanceof-chain` only caught one-line chains.
 
 ## [1.0.0] — 2026-04-26

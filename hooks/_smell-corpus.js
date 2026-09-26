@@ -86,12 +86,10 @@ function update(cfg, file, findings) {
 
     // index signatures across files
     const index = {}; // key = `${smellId}|${signature}` → Set of files
-    for (const [f, entry] of Object.entries(cache)) {
-        for (const fnd of (entry.findings || [])) {
-            const key = `${fnd.smellId}|${fnd.signature}`;
-            if (!index[key]) index[key] = new Set();
-            index[key].add(f);
-        }
+    const pairs = Object.entries(cache).flatMap(([f, entry]) => (entry.findings || []).map(fnd => [f, fnd]));
+    for (const [f, fnd] of pairs) {
+        const key = `${fnd.smellId}|${fnd.signature}`;
+        index[key] = (index[key] || new Set()).add(f);
     }
 
     const matches = [];

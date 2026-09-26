@@ -27,11 +27,8 @@ const pkgVersion = (() => {
 function read(p) { return fs.readFileSync(p, 'utf8'); }
 
 function stripFrontmatter(md) {
-    if (md.startsWith('---')) {
-        const end = md.indexOf('\n---', 3);
-        if (end !== -1) return md.slice(end + 4).replace(/^\n+/, '');
-    }
-    return md;
+    const end = md.startsWith('---') ? md.indexOf('\n---', 3) : -1;
+    return end === -1 ? md : md.slice(end + 4).replace(/^\n+/, '');
 }
 
 function rewriteRefLinks(md, slugs) {

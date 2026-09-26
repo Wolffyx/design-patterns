@@ -234,14 +234,10 @@ function detectTriggers(payloadInfo, triggers, langId) {
     if (triggers.newFile && payloadInfo.isNewFile && countNonWhitespaceLines(t) > 0) {
         reasons.push('new file');
     }
-    if (!payloadInfo.isNewFile && typeof triggers.diffLineThreshold === 'number') {
-        const addedLines = countNonWhitespaceLines(t);
-        const removedLines = countNonWhitespaceLines(payloadInfo.oldText);
-        const diff = Math.max(addedLines, removedLines);
-        if (Number.isFinite(triggers.diffLineThreshold) && diff >= triggers.diffLineThreshold) {
-            reasons.push('diff size ' + diff + ' \u2265 ' + triggers.diffLineThreshold + ' lines');
-        }
-    }
+    const threshold = triggers.diffLineThreshold;
+    const diff = Math.max(countNonWhitespaceLines(t), countNonWhitespaceLines(payloadInfo.oldText));
+    const bigDiff = !payloadInfo.isNewFile && typeof threshold === 'number' && Number.isFinite(threshold) && diff >= threshold;
+    if (bigDiff) reasons.push('diff size ' + diff + ' \u2265 ' + threshold + ' lines');
     return reasons;
 }
 
