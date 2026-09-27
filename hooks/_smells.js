@@ -227,7 +227,7 @@ function changedLineRanges(oldText, newText) {
 function formatFinding(fileRel, f) {
     const tag = f.severity === 'block' ? ' (block)' : '';
     const refLine = f.refSlug
-        ? `  See: .claude/skills/design-patterns/references/${f.refSlug}.md\n`
+        ? `  See: ${shared.skillPath('references', f.refSlug + '.md')}\n`
         : '';
     return `[pattern-smell]${tag} ${fileRel}:${f.line} ${f.message} — consider ${f.suggest}.\n` +
         refLine +

@@ -255,9 +255,9 @@ if (!preamble) {
         'Most bug fixes / small edits answer \"no GoF pattern\" \u2014 that is correct.',
         '',
         'Read before deciding:',
-        '  .claude/skills/design-patterns/SKILL.md',
-        '  .claude/design-patterns-project-usage.md',
-        '  .claude/skills/design-patterns/references/<slug>.md',
+        '  ' + shared.skillPath('SKILL.md'),
+        '  .claude/design-patterns-project-usage.md (if the project has one)',
+        '  ' + shared.skillPath('references', '<slug>.md'),
         '',
         'Bypass for mechanical codemods: add `' + skip + ' <reason>` to the payload.',
         '',
@@ -324,7 +324,7 @@ if (antisignal) {
     const hit = antisignal;
     writeErr([
         'WARN (pattern-antisignal): "' + patternName + '" reason matches antisignal phrase: "' + hit + '"',
-        '  Reference: ~/.claude/skills/design-patterns/references/<slug>.md \u2192 "Don\'t use when"',
+        '  Reference: ' + shared.skillPath('references', '<slug>.md') + ' \u2192 "Don\'t use when"',
         '  (non-blocking; logged as antisignal)',
     ].join('\n'));
     appendBlockStat(cfg, {

@@ -47,6 +47,13 @@ function assert(cond, msg) {
     if (!cond) throw new Error(msg);
 }
 
+/** The output names SKILL.md by the absolute path it has next to hooks/. */
+function assertSkillPathResolves(out) {
+    const skillMd = path.resolve(HOOKS, '..', 'skills', 'design-patterns', 'SKILL.md');
+    assert(fs.existsSync(skillMd), `SKILL.md exists at ${skillMd}`);
+    assert(out.includes(skillMd), `output names ${skillMd}`);
+}
+
 // ------------------------------------------------------------------
 // session-start-reminder.js
 // ------------------------------------------------------------------
@@ -58,6 +65,10 @@ check('emits Rule 0 banner on stdout', () => {
     assert(r.stdout.includes('Pattern check'), 'banner shows expected preamble form');
 });
 
+check('points at the installed SKILL.md', () => {
+    assertSkillPathResolves(run('session-start-reminder.js', {}).stdout);
+});
+
 // ------------------------------------------------------------------
 // user-prompt-reminder.js
 // ------------------------------------------------------------------
@@ -65,6 +76,7 @@ process.stdout.write('user-prompt-reminder\n');
 check('exits 0 with reminder text', () => {
     const r = run('user-prompt-reminder.js', {});
     assert(r.status === 0, `exit 0; got ${r.status}`);
+    assertSkillPathResolves(r.stdout);
 });
 
 // ------------------------------------------------------------------
@@ -83,6 +95,7 @@ check('blocks new class without preamble', () => {
     });
     assert(r.status === 2, `should block; got status=${r.status}, stderr=${r.stderr}`);
     assert(r.stderr.includes('BLOCKED by Rule 0'), 'mentions Rule 0');
+    assertSkillPathResolves(r.stderr);
 });
 
 check('allows tiny edit with no new symbol', () => {

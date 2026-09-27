@@ -3,6 +3,17 @@
 All notable changes to this project. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning: [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Hook messages (SessionStart and per-prompt reminders, the preamble block,
+  the antisignal warning, smell findings) named the skill as
+  `.claude/skills/design-patterns/…`, which does not exist on a plugin
+  install. They now print the absolute path of the installed skill,
+  resolved from the hooks directory, so it is right for the plugin cache,
+  install.sh and a project-local copy alike.
+
 ## [1.1.0] — 2026-09-26
 
 ### Added

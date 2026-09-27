@@ -203,6 +203,19 @@ function cacheFile(p) {
     return confinedPath(p, [projectClaudeRoot(), homeCache]);
 }
 
+// --- skill location --------------------------------------------------------
+// skills/design-patterns/ sits next to hooks/ in every install layout: the
+// plugin cache, install.sh (hooks/ is a symlink into the checkout, which Node
+// resolves) and a project-local .claude/ copy. Messages name it by absolute
+// path so the model can Read it wherever the plugin is installed.
+
+const SKILL_DIR = path.resolve(__dirname, '..', 'skills', 'design-patterns');
+
+/** Absolute path inside the skill, e.g. skillPath('references', '<slug>.md'). */
+function skillPath(...parts) {
+    return path.join(SKILL_DIR, ...parts);
+}
+
 // --- config-supplied patterns ----------------------------------------------
 
 /** Does filePath end in one of `exts`? Extensions match literally (`c++` too). */
@@ -531,6 +544,7 @@ module.exports = {
     expandHome,
     projectFile,
     cacheFile,
+    skillPath,
     hasExtension,
     configRegExp,
     matchesGlob,
