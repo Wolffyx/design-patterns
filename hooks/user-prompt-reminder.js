@@ -11,12 +11,14 @@
  * Kept intentionally short (~30 tokens) to minimize per-turn cost.
  */
 
+const { skillPath } = require('./_pattern-shared');
+
 process.stdout.write(
     'REMINDER (Rule 0): If this turn writes or edits a source file (TS/Python/Java/C#/Go/C++/Rust) ' +
     'with substantive new logic (class, interface, struct, trait, abstract, exported/public function, or >40-line ' +
     'diff), emit `Pattern check: <Pattern> (Tier N) — <decision> — <reason ≥20 chars>` ' +
     'before the Write/Edit tool call. Most bug fixes answer `no GoF pattern — rejected`. ' +
     'Control flow: guard clauses not nested ifs, dispatch map at 3+ branches, no query per loop item, never swallow errors. ' +
-    'See .claude/skills/design-patterns/SKILL.md and .claude/design-patterns-project-usage.md.\n'
+    'See ' + skillPath('SKILL.md') + ' and .claude/design-patterns-project-usage.md.\n'
 );
 process.exit(0);

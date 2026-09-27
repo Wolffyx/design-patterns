@@ -8,6 +8,8 @@
  * context attached to the session.
  */
 
+const { skillPath } = require('./_pattern-shared');
+
 const lines = [
     '=== Design Patterns \u2014 Rule 0 (from CLAUDE.md) ===',
     '',
@@ -24,9 +26,9 @@ const lines = [
     '    Pattern check: <PatternName> (Tier <N>) \u2014 extended \u2014 <cite existing project class>.',
     '',
     'Required reads on first class/interface/refactor per session:',
-    '  1. .claude/skills/design-patterns/SKILL.md',
-    '  2. .claude/design-patterns-project-usage.md',
-    '  3. .claude/skills/design-patterns/references/<slug>.md',
+    '  1. ' + skillPath('SKILL.md'),
+    '  2. .claude/design-patterns-project-usage.md (if the project has one)',
+    '  3. ' + skillPath('references', '<slug>.md'),
     '',
     'Control flow (every edit, see references/control-flow.md):',
     '  - no nested ifs: guard clauses / early return; depth \u2264 2; no else after return',
